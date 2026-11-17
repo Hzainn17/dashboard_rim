@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+
+  /* Hex / direct CSS variables */
+  --background: #f8f9fa;
+  --foreground: #1d1e1f;
+  --card: #ffffff;
+  --card-foreground: #1d1e1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1e1f;
+  --primary: #46797b;
+  --primary-foreground: #f8fbfb;
+  --secondary: #edf1f1;
+  --secondary-foreground: #252728;
+  --muted: #eef2f2;
+  --muted-foreground: #5e6468;
+  --accent: #e1f2f2;
+  --accent-foreground: #225052;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #389560;
+  --success-foreground: #f3fbf5;
+  --warning: #e49e22;
+  --warning-foreground: #ffffff;
+  --border: #e0e4e4;
+  --input: #dde0e1;
+  --ring: #46797b;
+  --sidebar: #f4f6f7;
+  --sidebar-foreground: #252728;
+  --sidebar-primary: #46797b;
+  --sidebar-primary-foreground: #f8fbfb;
+  --sidebar-accent: #e4ebec;
+  --sidebar-accent-foreground: #1d1e1f;
+  --sidebar-border: #dee2e3;
+  --sidebar-ring: #46797b;
+
+  /* RGB triplets for Tailwind opacity modifiers (e.g. bg-success/15, bg-primary/90) */
+  --background-rgb: 248 249 250;
+  --foreground-rgb: 29 30 31;
+  --card-rgb: 255 255 255;
+  --card-foreground-rgb: 29 30 31;
+  --popover-rgb: 255 255 255;
+  --popover-foreground-rgb: 29 30 31;
+  --primary-rgb: 70 121 123;
+  --primary-foreground-rgb: 248 251 251;
+  --secondary-rgb: 237 241 241;
+  --secondary-foreground-rgb: 37 39 40;
+  --muted-rgb: 238 242 242;
+  --muted-foreground-rgb: 94 100 104;
+  --accent-rgb: 225 242 242;
+  --accent-foreground-rgb: 34 80 82;
+  --destructive-rgb: 220 38 38;
+  --destructive-foreground-rgb: 255 255 255;
+  --success-rgb: 56 149 96;
+  --success-foreground-rgb: 243 251 245;
+  --warning-rgb: 228 158 34;
+  --warning-foreground-rgb: 255 255 255;
+  --border-rgb: 224 228 228;
+  --input-rgb: 221 224 225;
+  --ring-rgb: 70 121 123;
+  --sidebar-rgb: 244 246 247;
+  --sidebar-foreground-rgb: 37 39 40;
+  --sidebar-primary-rgb: 70 121 123;
+  --sidebar-primary-foreground-rgb: 248 251 251;
+  --sidebar-accent-rgb: 228 235 236;
+  --sidebar-accent-foreground-rgb: 29 30 31;
+  --sidebar-border-rgb: 222 226 227;
+  --sidebar-ring-rgb: 70 121 123;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--border);
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
