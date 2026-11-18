@@ -21,7 +21,7 @@ export default function EmployeesIndex({
 
     return (
         <>
-            <Head title="Data Karyawan — RIM Studio Arsitektur" />
+            <Head title="Data Karyawan" />
             <AppShell initialRole={initialRole} initialActive="karyawan">
                 <EmployeeManagement
                     employees={employees}

@@ -14,7 +14,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'compensation_status', 'check_in_at', 'check_out_at',
     'check_in_lat', 'check_in_lng', 'check_out_lat', 'check_out_lng',
     'check_in_distance_meters', 'target_work_minutes', 'actual_work_minutes',
-    'shortage_minutes', 'status', 'site_visit_project_id', 'site_visit_photo_url',
+    'shortage_minutes', 'status', 'is_auto_closed', 'adjustment_type',
+    'adjustment_status', 'adjusted_check_in_at', 'adjusted_check_out_at',
+    'adjustment_reason', 'site_visit_project_id', 'site_visit_photo_url',
     'site_visit_status', 'approved_by', 'approved_at', 'notes',
 ])]
 class Attendance extends Model
@@ -33,8 +35,11 @@ class Attendance extends Model
             'date' => 'date',
             'exchange_date' => 'date',
             'is_weekend' => 'boolean',
+            'is_auto_closed' => 'boolean',
             'check_in_at' => 'datetime',
             'check_out_at' => 'datetime',
+            'adjusted_check_in_at' => 'datetime',
+            'adjusted_check_out_at' => 'datetime',
             'approved_at' => 'datetime',
             'check_in_lat' => 'decimal:7',
             'check_in_lng' => 'decimal:7',

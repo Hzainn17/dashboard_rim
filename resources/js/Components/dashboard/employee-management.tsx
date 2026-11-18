@@ -15,13 +15,16 @@ import {
     Power,
     Search,
     ShieldCheck,
+    Trash2,
     UserCheck,
     Users,
     Wallet,
     X,
 } from 'lucide-react';
+import { CurrencyInput } from '@/Components/CurrencyInput';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
+import { MemberAvatar } from './member-avatar';
 
 export type EmployeeRecord = {
     id: number;
@@ -43,6 +46,7 @@ export type EmployeeRecord = {
     bank_name?: string | null;
     bank_account_number?: string | null;
     bank_account_holder?: string | null;
+    bank_branch?: string | null;
 };
 
 export type EmployeeStats = {
@@ -97,7 +101,7 @@ const positionSuggestions = [
     'Admin & Finance',
 ];
 
-const departmentOptions = ['Desain', 'Drafting', 'Visualisasi', 'Manajemen', 'Lapangan'];
+const departmentOptions = ['Perencanaan', 'Pembangunan', 'Administrasi', 'Digital Marketing'];
 
 export function EmployeeManagement({
     employees,
@@ -117,6 +121,8 @@ export function EmployeeManagement({
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<EmployeeRecord | null>(null);
+    const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRecord | null>(null);
+    const [deletingInProgress, setDeletingInProgress] = useState(false);
 
     const filtered = useMemo(() => {
         return employees.filter((emp) => {
@@ -148,6 +154,20 @@ export function EmployeeManagement({
 
     const handleToggleStatus = (emp: EmployeeRecord) => {
         router.patch(route('employees.toggle-status', emp.id), {}, { preserveScroll: true });
+    };
+
+    const handleConfirmDelete = () => {
+        if (!deletingEmployee) {
+            return;
+        }
+        setDeletingInProgress(true);
+        router.delete(route('employees.destroy', deletingEmployee.id), {
+            preserveScroll: true,
+            onFinish: () => {
+                setDeletingInProgress(false);
+                setDeletingEmployee(null);
+            },
+        });
     };
 
     const metricCards = [
@@ -334,8 +354,7 @@ export function EmployeeManagement({
                                     </td>
                                 </tr>
                             ) : (
-                                filtered.map((emp, idx) => {
-                                    const tone = avatarTones[idx % avatarTones.length];
+                                filtered.map((emp) => {
                                     const badge = statusBadgeStyle[emp.employment_status] ?? statusBadgeStyle.tetap;
 
                                     return (
@@ -349,14 +368,12 @@ export function EmployeeManagement({
                                             {/* Personel */}
                                             <td className="px-5 py-3.5">
                                                 <div className="flex items-center gap-3">
-                                                    <span
-                                                        className={cn(
-                                                            'inline-flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                                                            tone,
-                                                        )}
-                                                    >
-                                                        {getInitials(emp.name)}
-                                                    </span>
+                                                    <MemberAvatar
+                                                        id={emp.id}
+                                                        name={emp.name}
+                                                        photoUrl={emp.photo_url}
+                                                        className="size-9 shrink-0 text-xs ring-0"
+                                                    />
                                                     <div className="min-w-0">
                                                         <div className="flex items-center gap-1.5">
                                                             <p className="truncate font-medium text-foreground">
@@ -393,7 +410,7 @@ export function EmployeeManagement({
                                                     </span>
                                                     <span className="font-medium text-foreground">{emp.position}</span>
                                                     <span className="text-xs text-muted-foreground">
-                                                        Divisi {emp.department || 'Desain'}
+                                                        Divisi {emp.department || 'Perencanaan'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -482,22 +499,33 @@ export function EmployeeManagement({
                                                             Edit
                                                         </button>
                                                         {emp.id !== auth.user.id && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleToggleStatus(emp)}
-                                                                title={emp.is_active ? 'Nonaktifkan akun' : 'Aktifkan akun'}
-                                                                className={cn(
-                                                                    'inline-flex size-8 items-center justify-center rounded-md border transition-colors',
-                                                                    emp.is_active
-                                                                        ? 'text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive'
-                                                                        : 'text-success hover:bg-success/10',
-                                                                )}
-                                                            >
-                                                                <Power className="size-3.5" />
-                                                                <span className="sr-only">
-                                                                    {emp.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                                                                </span>
-                                                            </button>
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleToggleStatus(emp)}
+                                                                    title={emp.is_active ? 'Nonaktifkan akun' : 'Aktifkan akun'}
+                                                                    className={cn(
+                                                                        'inline-flex size-8 items-center justify-center rounded-md border transition-colors',
+                                                                        emp.is_active
+                                                                            ? 'text-muted-foreground hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700'
+                                                                            : 'text-success hover:bg-success/10',
+                                                                    )}
+                                                                >
+                                                                    <Power className="size-3.5" />
+                                                                    <span className="sr-only">
+                                                                        {emp.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                                                                    </span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setDeletingEmployee(emp)}
+                                                                    title="Hapus permanen karyawan"
+                                                                    className="inline-flex size-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                                                                >
+                                                                    <Trash2 className="size-3.5" />
+                                                                    <span className="sr-only">Hapus Permanen</span>
+                                                                </button>
+                                                            </>
                                                         )}
                                                     </div>
                                                 </td>
@@ -518,6 +546,50 @@ export function EmployeeManagement({
                     nextEmployeeCode={nextEmployeeCode}
                     onClose={() => setModalOpen(false)}
                 />
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {isAdmin && deletingEmployee && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+                    <div className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
+                        <div className="flex items-start gap-3">
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+                                <Trash2 className="size-5" />
+                            </span>
+                            <div>
+                                <h3 className="text-base font-semibold text-foreground">
+                                    Hapus Karyawan Permanen?
+                                </h3>
+                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                    Anda akan menghapus <strong>{deletingEmployee.name}</strong> ({deletingEmployee.employee_code}) beserta riwayat absensi &amp; slip gajinya secara permanen.
+                                </p>
+                                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                                    <strong>Tips:</strong> Jika karyawan resign namun arsip slip gaji &amp; absensinya masih ingin disimpan, gunakan tombol <strong>Nonaktifkan (ikon Power)</strong> saja.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                disabled={deletingInProgress}
+                                onClick={() => setDeletingEmployee(null)}
+                                className="inline-flex h-9 items-center rounded-lg border bg-background px-3.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={deletingInProgress}
+                                onClick={handleConfirmDelete}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-destructive px-4 text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                            >
+                                <Trash2 className="size-3.5" />
+                                {deletingInProgress ? 'Menghapus...' : 'Ya, Hapus Permanen'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -543,7 +615,7 @@ function EmployeeFormModal({
         role: (employee?.role ?? 'employee') as 'admin' | 'employee',
         employee_code: employee?.employee_code ?? nextEmployeeCode,
         position: employee?.position ?? 'Arsitek',
-        department: employee?.department ?? 'Desain',
+        department: employee?.department ?? 'Perencanaan',
         join_date: employee?.join_date ?? todayStr,
         employment_status: (employee?.employment_status ?? 'tetap') as 'tetap' | 'kontrak' | 'magang',
         annual_leave_quota: employee?.annual_leave_quota ?? 12,
@@ -553,6 +625,7 @@ function EmployeeFormModal({
         bank_name: employee?.bank_name ?? 'BCA',
         bank_account_number: employee?.bank_account_number ?? '',
         bank_account_holder: employee?.bank_account_holder ?? employee?.name ?? '',
+        bank_branch: employee?.bank_branch ?? '',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -781,40 +854,27 @@ function EmployeeFormModal({
                         </h3>
                         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                             <div>
-                                <label className="mb-1 block text-xs font-medium">Gaji Pokok (Rp) *</label>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={50000}
-                                    required
+                                <label className="mb-1 block text-xs font-medium">Gaji Pokok *</label>
+                                <CurrencyInput
                                     value={data.base_salary}
-                                    onChange={(e) => setData('base_salary', Number(e.target.value))}
-                                    className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm outline-none focus-visible:border-ring"
+                                    onChange={(val) => setData('base_salary', val)}
                                 />
                                 {errors.base_salary && <p className="mt-1 text-xs text-destructive">{errors.base_salary}</p>}
                             </div>
 
                             <div>
-                                <label className="mb-1 block text-xs font-medium">Tunjangan Tetap (Rp)</label>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={50000}
+                                <label className="mb-1 block text-xs font-medium">Tunjangan Tetap</label>
+                                <CurrencyInput
                                     value={data.fixed_allowance}
-                                    onChange={(e) => setData('fixed_allowance', Number(e.target.value))}
-                                    className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm outline-none focus-visible:border-ring"
+                                    onChange={(val) => setData('fixed_allowance', val)}
                                 />
                             </div>
 
                             <div>
-                                <label className="mb-1 block text-xs font-medium">Tarif Lembur / Jam (Rp)</label>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={5000}
+                                <label className="mb-1 block text-xs font-medium">Tarif Lembur / Jam</label>
+                                <CurrencyInput
                                     value={data.overtime_rate_per_hour}
-                                    onChange={(e) => setData('overtime_rate_per_hour', Number(e.target.value))}
-                                    className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm outline-none focus-visible:border-ring"
+                                    onChange={(val) => setData('overtime_rate_per_hour', val)}
                                 />
                             </div>
 
@@ -849,6 +909,17 @@ function EmployeeFormModal({
                                     onChange={(e) => setData('bank_account_holder', e.target.value)}
                                     placeholder="Sesuai buku tabungan"
                                     className="h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus-visible:border-ring"
+                                />
+                            </div>
+
+                            <div className="sm:col-span-3">
+                                <label className="mb-1 block text-xs font-medium">Kantor Cabang Bank</label>
+                                <input
+                                    type="text"
+                                    value={data.bank_branch}
+                                    onChange={(e) => setData('bank_branch', e.target.value)}
+                                    placeholder="Contoh: TASIKMALAYA / BANDUNG / JAKARTA"
+                                    className="h-9 w-full rounded-lg border bg-background px-3 text-sm uppercase outline-none focus-visible:border-ring"
                                 />
                             </div>
                         </div>

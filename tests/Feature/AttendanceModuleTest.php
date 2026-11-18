@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Attendance;
+use App\Models\LeaveRequest;
 use App\Models\OfficeSetting;
 use App\Models\Overtime;
 use App\Models\Project;
@@ -201,6 +202,247 @@ class AttendanceModuleTest extends TestCase
             'source' => 'manual',
             'duration_minutes' => 180,
             'status' => 'approved',
+        ]);
+    }
+
+    public function test_employee_can_request_check_in_adjustment_and_admin_can_approve(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+
+        // Employee checked in at 09:15 but arrived at 08:00
+        $attendance = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => Carbon::today()->setTime(9, 15),
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+        ]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/adjustment', [
+                'adjustment_type' => 'check_in',
+                'date' => Carbon::today()->format('Y-m-d'),
+                'adjusted_check_in_time' => '08:00',
+                'notes' => 'Sudah standby sejak jam 8 pagi, koordinasi denah dengan Lead',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'id' => $attendance->id,
+            'adjustment_type' => 'check_in',
+            'adjustment_status' => 'pending',
+            'adjustment_reason' => 'Sudah standby sejak jam 8 pagi, koordinasi denah dengan Lead',
+        ]);
+
+        $this->actingAs($admin)
+            ->patch("/attendance/approvals/adjustment/{$attendance->id}", [
+                'action' => 'approve',
+            ])
+            ->assertRedirect();
+
+        $updated = $attendance->fresh();
+        $this->assertSame('approved', $updated->adjustment_status);
+        $this->assertSame('08:00', $updated->check_in_at->format('H:i'));
+    }
+
+    public function test_employee_can_confirm_checkout_for_past_unclosed_attendance(): void
+    {
+        $employee = User::factory()->create();
+        $yesterday = Carbon::yesterday();
+
+        $unclosed = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => $yesterday->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => $yesterday->copy()->setTime(8, 30),
+            'check_out_at' => null,
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+            'is_auto_closed' => true,
+        ]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/confirm-checkout', [
+                'attendance_id' => $unclosed->id,
+                'check_out_time' => '17:30',
+                'notes' => 'Lupa checkout langsung pulang kemarin',
+            ])
+            ->assertRedirect();
+
+        $refreshed = $unclosed->fresh();
+        $this->assertNotNull($refreshed->check_out_at);
+        $this->assertSame('17:30', $refreshed->check_out_at->format('H:i'));
+        $this->assertSame(540, $refreshed->actual_work_minutes);
+        $this->assertSame(0, $refreshed->shortage_minutes);
+        $this->assertSame('hadir', $refreshed->status);
+        $this->assertFalse($refreshed->is_auto_closed);
+    }
+
+    public function test_attendance_auto_close_command_closes_unclosed_sessions_and_marks_for_confirmation(): void
+    {
+        $employee = User::factory()->create();
+        $yesterday = Carbon::yesterday();
+
+        $unclosed = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => $yesterday->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => $yesterday->copy()->setTime(8, 0),
+            'check_out_at' => null,
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+            'is_auto_closed' => false,
+        ]);
+
+        $this->artisan('attendance:auto-close')->assertSuccessful();
+
+        $refreshed = $unclosed->fresh();
+        $this->assertTrue($refreshed->is_auto_closed);
+        $this->assertNotNull($refreshed->check_out_at);
+        $this->assertSame('17:00', $refreshed->check_out_at->format('H:i'));
+        $this->assertSame(540, $refreshed->actual_work_minutes);
+        $this->assertSame(0, $refreshed->shortage_minutes);
+
+        // Employee sees unclosedPastAttendance in Inertia shared props on dashboard
+        $this->actingAs($employee)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('auth.unclosedPastAttendance.id', $unclosed->id)
+            );
+    }
+
+    public function test_employee_can_split_checkout_and_immediately_start_overtime(): void
+    {
+        $this->travelTo(Carbon::today()->setTime(19, 0));
+
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        // Employee checked in at 08:00 (11 hours ago)
+        $attendance = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => Carbon::today()->setTime(8, 0),
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+        ]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/checkout-and-overtime', [
+                'project_id' => $project->id,
+                'task_description' => 'Lembur asistensi gambar tender malam',
+            ])
+            ->assertRedirect();
+
+        $refreshedAtt = $attendance->fresh();
+        $this->assertNotNull($refreshedAtt->check_out_at);
+        // Regular work should be capped at exact 9 hours (17:00)
+        $this->assertSame('17:00', $refreshedAtt->check_out_at->format('H:i'));
+        $this->assertSame(540, $refreshedAtt->actual_work_minutes);
+        $this->assertSame(0, $refreshedAtt->shortage_minutes);
+        $this->assertSame('hadir', $refreshedAtt->status);
+
+        // Active overtime session should be created immediately
+        $overtime = Overtime::query()->where('user_id', $employee->id)->where('status', 'active')->first();
+        $this->assertNotNull($overtime);
+        $this->assertSame($project->id, $overtime->project_id);
+        $this->assertSame('Lembur asistensi gambar tender malam', $overtime->task_description);
+    }
+
+    public function test_employee_cannot_start_overtime_twice_in_same_day(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        Overtime::query()->create([
+            'user_id' => $employee->id,
+            'project_id' => $project->id,
+            'source' => 'regular',
+            'start_at' => Carbon::today()->setTime(19, 0),
+            'end_at' => Carbon::today()->setTime(20, 0),
+            'duration_minutes' => 60,
+            'task_description' => 'Sesi lembur pertama',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/overtime/start', [
+                'project_id' => $project->id,
+                'task_description' => 'Mencoba lembur kedua hari yang sama',
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertSame(1, Overtime::query()->where('user_id', $employee->id)->count());
+    }
+
+    public function test_employee_cannot_start_overtime_when_on_leave_today(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/leave-requests', [
+                'type' => 'izin',
+                'start_date' => Carbon::today()->format('Y-m-d'),
+                'end_date' => Carbon::today()->format('Y-m-d'),
+                'reason' => 'Keperluan keluarga mendadak',
+            ])
+            ->assertRedirect();
+
+        $leave = LeaveRequest::query()->where('user_id', $employee->id)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->patch("/attendance/approvals/leave/{$leave->id}", [
+                'action' => 'approve',
+            ])
+            ->assertRedirect();
+
+        $leave = LeaveRequest::query()->where('user_id', $employee->id)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->patch("/attendance/approvals/leave/{$leave->id}", [
+                'action' => 'approve',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($employee)
+            ->post('/attendance/overtime/start', [
+                'project_id' => $project->id,
+                'task_description' => 'Coba lembur saat izin hari ini',
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, Overtime::query()->where('user_id', $employee->id)->count());
+    }
+
+    public function test_weekend_simulation_toggle_records_weekend_compensation_on_weekday(): void
+    {
+        OfficeSetting::current();
+        $employee = User::factory()->create();
+        $exchangeDate = Carbon::today()->addDays(3)->format('Y-m-d');
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'distance_meters' => 25,
+                'is_weekend' => true,
+                'compensation_type' => 'day_off_exchange',
+                'exchange_date' => $exchangeDate,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $employee->id,
+            'is_weekend' => true,
+            'compensation_type' => 'day_off_exchange',
+            'compensation_status' => 'pending',
         ]);
     }
 }

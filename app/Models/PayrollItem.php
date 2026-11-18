@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'alpha_deduction', 'other_deduction', 'total_allowance', 'total_deduction',
     'net_salary', 'present_days', 'absent_days', 'shortage_minutes',
     'is_manual_override', 'bank_name', 'bank_account_number',
-    'bank_account_holder', 'slip_file_url',
+    'bank_account_holder', 'bank_branch', 'slip_file_url',
 ])]
 class PayrollItem extends Model
 {

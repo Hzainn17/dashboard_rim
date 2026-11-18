@@ -5,10 +5,19 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = 'RIM Project';
 
 createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+    title: (title) => {
+        const cleanTitle = title
+            .replace(/\s*[—-]\s*RIM Studio Arsitektur/gi, '')
+            .replace(/\s*[—-]\s*Studio Arsitektur/gi, '')
+            .replace(/\s*[—-]\s*Dashboard Studio/gi, '')
+            .replace(/\s*[—-]\s*RIM Studio/gi, '')
+            .replace(/\s*[—-]\s*RIM Project/gi, '')
+            .trim();
+        return cleanTitle ? `${cleanTitle} - ${appName}` : appName;
+    },
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.tsx`,

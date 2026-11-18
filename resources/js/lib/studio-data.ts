@@ -7,6 +7,7 @@ import {
     LayoutDashboard,
     MapPinCheck,
     Settings,
+    User,
     Users,
     type LucideIcon,
 } from 'lucide-react';
@@ -44,7 +45,7 @@ export const karyawanNav: NavItem[] = [
     { id: 'presensi-harian', label: 'Presensi Harian', icon: MapPinCheck },
     { id: 'projects', label: 'Project Saya', icon: FolderKanban },
     { id: 'kalender', label: 'Kalender Tim', icon: CalendarDays },
-    { id: 'slip', label: 'Slip Gaji', icon: FileText },
+    { id: 'profil', label: 'Profil Saya', icon: User },
 ];
 
 export type TeamMember = {
@@ -65,6 +66,32 @@ export const team: TeamMember[] = [
 ];
 
 export const teamById = Object.fromEntries(team.map((m) => [m.id, m])) as Record<string, TeamMember>;
+
+export const avatarTones = [
+    'bg-stone-800 text-stone-50',
+    'bg-orange-200 text-orange-900',
+    'bg-emerald-200 text-emerald-900',
+    'bg-amber-200 text-amber-900',
+    'bg-rose-200 text-rose-900',
+    'bg-stone-300 text-stone-800',
+];
+
+export function getAvatarTone(id: number | string, name?: string): string {
+    if (typeof id === 'string' && teamById[id]) {
+        return teamById[id].tone;
+    }
+    if (name) {
+        const found = team.find((t) => t.name.toLowerCase() === name.toLowerCase());
+        if (found) return found.tone;
+    }
+    const seed =
+        typeof id === 'number'
+            ? Math.max(0, id - 1)
+            : name
+            ? name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+            : 0;
+    return avatarTones[Math.abs(seed) % avatarTones.length];
+}
 
 export const currentUser: Record<Role, TeamMember & { roleLabel: string }> = {
     admin: { ...team[0], roleLabel: 'Admin Studio' },
@@ -96,7 +123,7 @@ export const projects: Project[] = [
         progress: 72,
         daysLeft: 5,
         phase: 'DED',
-        cover: '/projects/rumah-tropis.png',
+        cover: '/project-covers/rumah-tropis.png',
         team: ['ap', 'ns', 'fh'],
     },
     {
@@ -108,7 +135,7 @@ export const projects: Project[] = [
         progress: 41,
         daysLeft: 38,
         phase: 'Pra-Rancangan',
-        cover: '/projects/kantor-sudirman.png',
+        cover: '/project-covers/kantor-sudirman.png',
         team: ['rm', 'ap', 'sa', 'fh'],
     },
     {
@@ -120,7 +147,7 @@ export const projects: Project[] = [
         progress: 88,
         daysLeft: 3,
         phase: 'Konstruksi',
-        cover: '/projects/interior-kafe.png',
+        cover: '/project-covers/interior-kafe.png',
         team: ['dk', 'ns'],
     },
     {
@@ -132,7 +159,7 @@ export const projects: Project[] = [
         progress: 24,
         daysLeft: 61,
         phase: 'Konsep',
-        cover: '/projects/villa-lembang.png',
+        cover: '/project-covers/villa-lembang.png',
         team: ['rm', 'dk', 'sa'],
     },
 ];

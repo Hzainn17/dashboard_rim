@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
-    'office_name', 'latitude', 'longitude', 'radius_meters',
+    'office_name', 'company_logo_url', 'latitude', 'longitude', 'radius_meters',
     'standard_work_hours', 'overtime_cooldown_minutes', 'overtime_rate_per_hour',
 ])]
 class OfficeSetting extends Model

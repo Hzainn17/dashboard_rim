@@ -5,6 +5,7 @@ import {
     CalendarCheck2,
     Check,
     CheckCircle2,
+    Clock,
     FileText,
     HardHat,
     Lock,
@@ -68,14 +69,33 @@ type OvertimeItem = {
     status: 'pending' | 'approved' | 'rejected';
 };
 
+type AdjustmentItem = {
+    id: number;
+    user_id: number;
+    user_name: string;
+    employee_code: string;
+    position: string;
+    date: string;
+    mode: 'office' | 'site_visit';
+    adjustment_type: 'none' | 'check_in' | 'check_out' | 'full_day';
+    adjustment_status: 'none' | 'pending' | 'approved' | 'rejected';
+    check_in_time?: string | null;
+    check_out_time?: string | null;
+    adjusted_check_in_time?: string | null;
+    adjusted_check_out_time?: string | null;
+    adjustment_reason?: string | null;
+};
+
 interface Props {
     siteVisits: SiteVisitItem[];
     leaveRequests: LeaveRequestItem[];
     overtimes: OvertimeItem[];
+    adjustments?: AdjustmentItem[];
     counts: {
         site_visit_pending: number;
         leave_pending: number;
         overtime_pending: number;
+        adjustment_pending?: number;
     };
 }
 
@@ -83,12 +103,13 @@ export default function AttendanceApprovals({
     siteVisits,
     leaveRequests,
     overtimes,
+    adjustments = [],
     counts,
 }: Props) {
     const { auth, flash } = usePage<PageProps>().props;
     const initialRole = auth?.user?.role === 'admin' ? 'admin' : 'karyawan';
 
-    const [activeTab, setActiveTab] = useState<'site_visit' | 'leave' | 'overtime'>('site_visit');
+    const [activeTab, setActiveTab] = useState<'site_visit' | 'leave' | 'overtime' | 'adjustment'>('site_visit');
 
     const handleSiteVisitAction = (id: number, action: 'approve' | 'reject') => {
         router.patch(
@@ -114,12 +135,21 @@ export default function AttendanceApprovals({
         );
     };
 
+    const handleAdjustmentAction = (id: number, action: 'approve' | 'reject') => {
+        router.patch(
+            route('attendance.approvals.adjustment', id),
+            { action },
+            { preserveScroll: true },
+        );
+    };
+
+    const adjustmentPendingCount = counts.adjustment_pending ?? 0;
     const totalPending =
-        counts.site_visit_pending + counts.leave_pending + counts.overtime_pending;
+        counts.site_visit_pending + counts.leave_pending + counts.overtime_pending + adjustmentPendingCount;
 
     return (
         <>
-            <Head title="Pusat Approval Presensi & Lembur — RIM Studio Arsitektur" />
+            <Head title="Pusat Approval" />
             <AppShell initialRole={initialRole} initialActive="presensi-approval">
                 <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
                     {/* Header */}
@@ -142,8 +172,8 @@ export default function AttendanceApprovals({
                         </div>
                     )}
 
-                    {/* 3 Summary Cards */}
-                    <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {/* 4 Summary Cards */}
+                    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <button
                             type="button"
                             onClick={() => setActiveTab('site_visit')}
@@ -215,6 +245,30 @@ export default function AttendanceApprovals({
                                 </span>
                             </div>
                         </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('adjustment')}
+                            className={cn(
+                                'flex flex-col gap-2 rounded-xl border bg-card p-4 text-left transition-colors',
+                                activeTab === 'adjustment' && 'border-primary bg-accent/30',
+                            )}
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                    Koreksi Jam & Lupa Absen
+                                </span>
+                                <Clock className="size-4 text-primary" />
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-2xl font-semibold tabular-nums">
+                                    {adjustmentPendingCount}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    menunggu dari {adjustments.length} pengajuan
+                                </span>
+                            </div>
+                        </button>
                     </section>
 
                     {/* Main Tab Card */}
@@ -280,6 +334,27 @@ export default function AttendanceApprovals({
                                     {counts.overtime_pending > 0 && (
                                         <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">
                                             {counts.overtime_pending}
+                                        </span>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={activeTab === 'adjustment'}
+                                    onClick={() => setActiveTab('adjustment')}
+                                    className={cn(
+                                        'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                                        activeTab === 'adjustment'
+                                            ? 'bg-card text-foreground shadow-xs'
+                                            : 'text-muted-foreground hover:text-foreground',
+                                    )}
+                                >
+                                    <Clock className="size-3.5" />
+                                    Koreksi Presensi
+                                    {adjustmentPendingCount > 0 && (
+                                        <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">
+                                            {adjustmentPendingCount}
                                         </span>
                                     )}
                                 </button>
@@ -613,6 +688,115 @@ export default function AttendanceApprovals({
                                                                     type="button"
                                                                     onClick={() =>
                                                                         handleOvertimeAction(ot.id, 'reject')
+                                                                    }
+                                                                    className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                                                                >
+                                                                    <X className="size-3.5" />
+                                                                    Tolak
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Selesai diverifikasi
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Tab 4: Koreksi Presensi (Lupa Absen Masuk / Pulang / Seharian) */}
+                        {activeTab === 'adjustment' && (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b bg-muted/40 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                                            <th className="px-5 py-3">Karyawan</th>
+                                            <th className="px-4 py-3">Tanggal & Jenis</th>
+                                            <th className="px-4 py-3">Jam Asli vs Koreksi</th>
+                                            <th className="px-4 py-3">Alasan Pengajuan</th>
+                                            <th className="px-4 py-3">Status</th>
+                                            <th className="px-5 py-3 text-right">Keputusan Admin</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {adjustments.length === 0 ? (
+                                            <tr>
+                                                <td
+                                                    colSpan={6}
+                                                    className="px-5 py-10 text-center text-sm text-muted-foreground"
+                                                >
+                                                    Belum ada pengajuan koreksi presensi dari karyawan.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            adjustments.map((adj) => (
+                                                <tr key={adj.id} className="hover:bg-muted/30">
+                                                    <td className="px-5 py-3.5">
+                                                        <p className="font-medium">{adj.user_name}</p>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            {adj.employee_code} · {adj.position}
+                                                        </p>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <p className="font-mono text-xs">{adj.date}</p>
+                                                        <span className="mt-1 inline-flex rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-foreground">
+                                                            {adj.adjustment_type === 'check_in'
+                                                                ? 'Koreksi Jam Masuk'
+                                                                : adj.adjustment_type === 'check_out'
+                                                                ? 'Koreksi Jam Pulang'
+                                                                : 'Absen Susulan Seharian'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs">
+                                                        <div className="flex flex-col gap-0.5 font-mono">
+                                                            <span className="text-muted-foreground">
+                                                                Asli: {adj.check_in_time ?? '—'} s/d {adj.check_out_time ?? '—'}
+                                                            </span>
+                                                            <span className="font-semibold text-primary">
+                                                                Koreksi: {adj.adjusted_check_in_time ?? adj.check_in_time ?? '—'} s/d{' '}
+                                                                {adj.adjusted_check_out_time ?? adj.check_out_time ?? '—'}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-xs text-muted-foreground max-w-xs">
+                                                        {adj.adjustment_reason || '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize',
+                                                                adj.adjustment_status === 'approved'
+                                                                    ? 'bg-success/15 text-success'
+                                                                    : adj.adjustment_status === 'rejected'
+                                                                    ? 'bg-destructive/15 text-destructive'
+                                                                    : 'bg-warning/20 text-amber-800',
+                                                            )}
+                                                        >
+                                                            {adj.adjustment_status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-5 py-3.5 text-right">
+                                                        {adj.adjustment_status === 'pending' ? (
+                                                            <div className="inline-flex items-center gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleAdjustmentAction(adj.id, 'approve')
+                                                                    }
+                                                                    className="inline-flex h-8 items-center gap-1 rounded-md bg-success px-2.5 text-xs font-medium text-success-foreground hover:bg-success/90"
+                                                                >
+                                                                    <Check className="size-3.5" />
+                                                                    Setujui
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleAdjustmentAction(adj.id, 'reject')
                                                                     }
                                                                     className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10"
                                                                 >

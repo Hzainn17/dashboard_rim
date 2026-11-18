@@ -6,10 +6,15 @@ use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Models\ActivityLog;
 use App\Models\Employee;
+use App\Models\Payroll;
+use App\Models\PayrollItem;
+use App\Models\Project;
+use App\Models\ProjectUpdate;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -41,7 +46,7 @@ class EmployeeController extends Controller
                 'photo_url' => $user->photo_url,
                 'employee_code' => $emp?->employee_code ?? sprintf('RIM-%03d', $user->id),
                 'position' => $emp?->position ?? ($user->isAdmin() ? 'Principal Architect' : 'Staf Studio'),
-                'department' => $emp?->department ?? 'Desain',
+                'department' => $emp?->department ?? 'Perencanaan',
                 'join_date' => $emp?->join_date?->format('Y-m-d') ?? $user->created_at?->format('Y-m-d'),
                 'employment_status' => $emp?->employment_status ?? 'tetap',
                 'annual_leave_quota' => $emp?->annual_leave_quota ?? 12,
@@ -54,6 +59,7 @@ class EmployeeController extends Controller
                 $data['bank_name'] = $emp?->bank_name ?? 'BCA';
                 $data['bank_account_number'] = $emp?->bank_account_number ?? '';
                 $data['bank_account_holder'] = $emp?->bank_account_holder ?? $user->name;
+                $data['bank_branch'] = $emp?->bank_branch ?? '';
             }
 
             return $data;
@@ -102,7 +108,7 @@ class EmployeeController extends Controller
             $user->employee()->create([
                 'employee_code' => $validated['employee_code'],
                 'position' => $validated['position'],
-                'department' => $validated['department'] ?? 'Desain',
+                'department' => $validated['department'] ?? 'Perencanaan',
                 'join_date' => $validated['join_date'],
                 'employment_status' => $validated['employment_status'],
                 'annual_leave_quota' => $validated['annual_leave_quota'],
@@ -112,6 +118,7 @@ class EmployeeController extends Controller
                 'bank_name' => $validated['bank_name'] ?? 'BCA',
                 'bank_account_number' => $validated['bank_account_number'] ?? null,
                 'bank_account_holder' => $validated['bank_account_holder'] ?? $validated['name'],
+                'bank_branch' => $validated['bank_branch'] ?? null,
             ]);
 
             return $user;
@@ -153,7 +160,7 @@ class EmployeeController extends Controller
                 [
                     'employee_code' => $validated['employee_code'],
                     'position' => $validated['position'],
-                    'department' => $validated['department'] ?? 'Desain',
+                    'department' => $validated['department'] ?? 'Perencanaan',
                     'join_date' => $validated['join_date'],
                     'employment_status' => $validated['employment_status'],
                     'annual_leave_quota' => $validated['annual_leave_quota'],
@@ -163,6 +170,7 @@ class EmployeeController extends Controller
                     'bank_name' => $validated['bank_name'] ?? 'BCA',
                     'bank_account_number' => $validated['bank_account_number'] ?? null,
                     'bank_account_holder' => $validated['bank_account_holder'] ?? $validated['name'],
+                    'bank_branch' => $validated['bank_branch'] ?? null,
                 ],
             );
         });
@@ -204,5 +212,56 @@ class EmployeeController extends Controller
         );
 
         return redirect()->route('employees.index')->with('success', "Akun {$employee->name} berhasil {$statusLabel}.");
+    }
+
+    /**
+     * Permanently delete an employee account and reassign/clean up restricted references.
+     */
+    public function destroy(Request $request, User $employee): RedirectResponse
+    {
+        if (! $request->user()?->isAdmin()) {
+            abort(403);
+        }
+
+        if ($employee->id === $request->user()->id) {
+            return redirect()->route('employees.index')->with('error', 'Anda tidak dapat menghapus akun Anda sendiri.');
+        }
+
+        $deletedName = $employee->name;
+
+        DB::transaction(function () use ($request, $employee): void {
+            Project::query()
+                ->where('owner_id', $employee->id)
+                ->update(['owner_id' => $request->user()->id]);
+
+            Payroll::query()
+                ->where('generated_by', $employee->id)
+                ->update(['generated_by' => $request->user()->id]);
+
+            ProjectUpdate::query()
+                ->where('user_id', $employee->id)
+                ->delete();
+
+            PayrollItem::query()
+                ->where('user_id', $employee->id)
+                ->delete();
+
+            if ($employee->photo_url && str_starts_with($employee->photo_url, '/uploads/avatars/')) {
+                $photoPath = public_path(ltrim($employee->photo_url, '/'));
+                if (File::exists($photoPath)) {
+                    File::delete($photoPath);
+                }
+            }
+
+            $employee->delete();
+        });
+
+        ActivityLog::record(
+            action: 'employee.deleted',
+            description: "{$request->user()->name} menghapus permanen karyawan: {$deletedName}",
+            user: $request->user(),
+        );
+
+        return redirect()->route('employees.index')->with('success', "Karyawan {$deletedName} berhasil dihapus permanen.");
     }
 }

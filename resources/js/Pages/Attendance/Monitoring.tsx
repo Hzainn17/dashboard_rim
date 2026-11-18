@@ -268,7 +268,7 @@ export default function AttendanceMonitoring({
 
     return (
         <>
-            <Head title="Rekap & Monitoring Presensi Tim — RIM Studio Arsitektur" />
+            <Head title="Rekap & Monitoring" />
             <AppShell initialRole={initialRole} initialActive="presensi-rekap">
                 <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
                     {/* Header */}

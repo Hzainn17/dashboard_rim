@@ -22,7 +22,7 @@ class UserSeeder extends Seeder
         Employee::factory()->for($admin)->create([
             'employee_code' => 'RIM-001',
             'position' => 'Principal Architect',
-            'department' => 'Manajemen',
+            'department' => 'Administrasi',
             'base_salary' => 15_000_000,
             'bank_name' => 'BCA',
             'bank_account_holder' => $admin->name,
@@ -30,11 +30,11 @@ class UserSeeder extends Seeder
 
         /** @var list<array{name: string, email: string, code: string, position: string, department: string, salary: int, bank: string, status: string}> $employees */
         $employees = [
-            ['name' => 'Budi Santoso', 'email' => 'budi@rimstudio.com', 'code' => 'RIM-002', 'position' => 'Lead Arsitek', 'department' => 'Desain', 'salary' => 10_000_000, 'bank' => 'BCA', 'status' => 'tetap'],
-            ['name' => 'Siti Rahma', 'email' => 'siti@rimstudio.com', 'code' => 'RIM-003', 'position' => 'Drafter', 'department' => 'Drafting', 'salary' => 6_000_000, 'bank' => 'BNI', 'status' => 'tetap'],
-            ['name' => 'Andi Pratama', 'email' => 'andi@rimstudio.com', 'code' => 'RIM-004', 'position' => '3D Visualizer', 'department' => 'Visualisasi', 'salary' => 7_000_000, 'bank' => 'BCA', 'status' => 'kontrak'],
-            ['name' => 'Dewi Lestari', 'email' => 'dewi@rimstudio.com', 'code' => 'RIM-005', 'position' => 'Interior Designer', 'department' => 'Desain', 'salary' => 7_500_000, 'bank' => 'BNI', 'status' => 'tetap'],
-            ['name' => 'Rizky Hidayat', 'email' => 'rizky@rimstudio.com', 'code' => 'RIM-006', 'position' => 'Drafter', 'department' => 'Drafting', 'salary' => 3_500_000, 'bank' => 'BCA', 'status' => 'magang'],
+            ['name' => 'Budi Santoso', 'email' => 'budi@rimstudio.com', 'code' => 'RIM-002', 'position' => 'Lead Arsitek', 'department' => 'Perencanaan', 'salary' => 10_000_000, 'bank' => 'BCA', 'status' => 'tetap'],
+            ['name' => 'Siti Rahma', 'email' => 'siti@rimstudio.com', 'code' => 'RIM-003', 'position' => 'Drafter', 'department' => 'Perencanaan', 'salary' => 6_000_000, 'bank' => 'BNI', 'status' => 'tetap'],
+            ['name' => 'Andi Pratama', 'email' => 'andi@rimstudio.com', 'code' => 'RIM-004', 'position' => 'Site Supervisor', 'department' => 'Pembangunan', 'salary' => 7_000_000, 'bank' => 'BCA', 'status' => 'kontrak'],
+            ['name' => 'Dewi Lestari', 'email' => 'dewi@rimstudio.com', 'code' => 'RIM-005', 'position' => 'Digital Marketing', 'department' => 'Digital Marketing', 'salary' => 7_500_000, 'bank' => 'BNI', 'status' => 'tetap'],
+            ['name' => 'Rizky Hidayat', 'email' => 'rizky@rimstudio.com', 'code' => 'RIM-006', 'position' => 'Administrasi Studio', 'department' => 'Administrasi', 'salary' => 3_500_000, 'bank' => 'BCA', 'status' => 'magang'],
         ];
 
         foreach ($employees as $data) {

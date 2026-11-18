@@ -1,6 +1,8 @@
+import { usePage } from '@inertiajs/react';
 import { ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react';
 import type { Role } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
+import { PageProps } from '@/types';
 
 type MetricCardData = {
     label: string;
@@ -12,84 +14,114 @@ type MetricCardData = {
     variant: 'featured' | 'standard' | 'sparkline';
 };
 
-const adminMetrics: MetricCardData[] = [
-    {
-        label: 'Hadir di Kantor',
-        value: '12',
-        suffix: '/15',
-        badge: '+80%',
-        badgeTone: 'positive',
-        hint: 'vs kemarin 11/15 · 3 tim di lapangan',
-        variant: 'featured',
-    },
-    {
-        label: 'Site Visit Lapangan',
-        value: '3',
-        suffix: 'tim',
-        badge: '+2 lokasi',
-        badgeTone: 'positive',
-        hint: 'Bandung · Lembang · Jakarta',
-        variant: 'standard',
-    },
-    {
-        label: 'Deadline Mendesak',
-        value: '2',
-        suffix: 'proyek',
-        badge: '< 7 hari',
-        badgeTone: 'negative',
-        hint: 'Rumah Canggu · Kopi Senja',
-        variant: 'standard',
-    },
-    {
-        label: 'Proyek Berjalan',
-        value: '8',
-        suffix: 'aktif',
-        badge: '+25%',
-        badgeTone: 'positive',
-        hint: 'vs bulan lalu 6 proyek aktif',
-        variant: 'sparkline',
-    },
-];
-
-const karyawanMetrics: MetricCardData[] = [
-    {
-        label: 'Jam Kerja Minggu Ini',
-        value: '31',
-        suffix: 'jam',
-        badge: '69%',
-        badgeTone: 'positive',
-        hint: 'Target 45 jam / minggu (Sen–Jum)',
-        variant: 'featured',
-    },
-    {
-        label: 'Proyek Saya',
-        value: '2',
-        suffix: 'aktif',
-        badge: 'On Track',
-        badgeTone: 'positive',
-        hint: 'Rumah Canggu · Menara Sudirman',
-        variant: 'standard',
-    },
-    {
-        label: 'Estimasi Lembur',
-        value: '4,5',
-        suffix: 'jam',
-        badge: '+1,5 jam',
-        badgeTone: 'warning',
-        hint: 'Masuk perhitungan slip November',
-        variant: 'standard',
-    },
-    {
-        label: 'Kehadiran Bulan Ini',
-        value: '96%',
-        badge: '+4,2%',
-        badgeTone: 'positive',
-        hint: '11 dari 12 hari kerja tepat waktu',
-        variant: 'sparkline',
-    },
-];
+type LiveDashboardMetrics = {
+    present_count: number;
+    total_employees: number;
+    site_visit_count: number;
+    active_projects_count: number;
+    urgent_projects_count: number;
+    urgent_project_names?: string;
+    my_active_projects_count?: number;
+    my_active_project_names?: string;
+    my_week_work_hours?: number;
+    my_overtime_hours?: number;
+    my_month_attendance_days?: number;
+};
 
 export function QuickMetrics({ role }: { role: Role }) {
+    const { metrics: liveMetrics } = usePage<PageProps & { metrics?: LiveDashboardMetrics }>().props;
+
+    const totalEmp = liveMetrics?.total_employees ?? 1;
+    const presentCount = liveMetrics?.present_count ?? 0;
+    const presentPct = Math.round((presentCount / Math.max(1, totalEmp)) * 100);
+    const siteVisitCount = liveMetrics?.site_visit_count ?? 0;
+    const urgentCount = liveMetrics?.urgent_projects_count ?? 0;
+    const activeCount = liveMetrics?.active_projects_count ?? 0;
+
+    const weekHours = liveMetrics?.my_week_work_hours ?? 0;
+    const weekPct = Math.min(100, Math.round((weekHours / 45) * 100));
+    const myProjectsCount = liveMetrics?.my_active_projects_count ?? 0;
+    const myOvertimeHours = liveMetrics?.my_overtime_hours ?? 0;
+    const myAttendanceDays = liveMetrics?.my_month_attendance_days ?? 0;
+
+    const adminMetrics: MetricCardData[] = [
+        {
+            label: 'Hadir di Kantor',
+            value: String(presentCount),
+            suffix: `/${totalEmp}`,
+            badge: `${presentPct}%`,
+            badgeTone: 'positive',
+            hint: `${siteVisitCount} tim sedang site visit lapangan`,
+            variant: 'featured',
+        },
+        {
+            label: 'Site Visit Lapangan',
+            value: String(siteVisitCount),
+            suffix: 'tim',
+            badge: siteVisitCount > 0 ? 'Aktif' : 'Standby',
+            badgeTone: 'positive',
+            hint: 'Kunjungan proyek terjadwal hari ini',
+            variant: 'standard',
+        },
+        {
+            label: 'Deadline Mendesak',
+            value: String(urgentCount),
+            suffix: 'proyek',
+            badge: urgentCount > 0 ? '< 7 hari' : 'Aman',
+            badgeTone: urgentCount > 0 ? 'negative' : 'positive',
+            hint: liveMetrics?.urgent_project_names || 'Tidak ada deadline mendesak',
+            variant: 'standard',
+        },
+        {
+            label: 'Proyek Berjalan',
+            value: String(activeCount),
+            suffix: 'aktif',
+            badge: 'Live DB',
+            badgeTone: 'positive',
+            hint: 'Proyek aktif dalam fase desain & review',
+            variant: 'sparkline',
+        },
+    ];
+
+    const karyawanMetrics: MetricCardData[] = [
+        {
+            label: 'Jam Kerja Minggu Ini',
+            value: String(weekHours).replace('.', ','),
+            suffix: 'jam',
+            badge: `${weekPct}%`,
+            badgeTone: 'positive',
+            hint: 'Target 45 jam / minggu (Sen–Jum)',
+            variant: 'featured',
+        },
+        {
+            label: 'Proyek Saya',
+            value: String(myProjectsCount),
+            suffix: 'aktif',
+            badge: 'On Track',
+            badgeTone: 'positive',
+            hint: liveMetrics?.my_active_project_names || 'Belum ada proyek ditugaskan',
+            variant: 'standard',
+        },
+        {
+            label: 'Estimasi Lembur',
+            value: String(myOvertimeHours).replace('.', ','),
+            suffix: 'jam',
+            badge: myOvertimeHours > 0 ? 'Bulan ini' : '0 jam',
+            badgeTone: myOvertimeHours > 0 ? 'warning' : 'positive',
+            hint: 'Tercatat pada periode berjalan',
+            variant: 'standard',
+        },
+        {
+            label: 'Kehadiran Bulan Ini',
+            value: String(myAttendanceDays),
+            suffix: 'hari',
+            badge: 'Tercatat',
+            badgeTone: 'positive',
+            hint: 'Total presensi sah bulan berjalan',
+            variant: 'sparkline',
+        },
+    ];
+
     const metrics = role === 'admin' ? adminMetrics : karyawanMetrics;
 
     return (

@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'period_name', 'start_date', 'end_date', 'period_month', 'period_year',
-    'status', 'total_amount', 'generated_by', 'finalized_at', 'paid_at',
+    'period_name', 'type', 'start_date', 'end_date', 'thr_reference_date',
+    'period_month', 'period_year', 'status', 'total_amount', 'generated_by',
+    'finalized_at', 'paid_at',
 ])]
 class Payroll extends Model
 {
@@ -23,6 +24,7 @@ class Payroll extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'thr_reference_date' => 'date',
             'period_month' => 'integer',
             'period_year' => 'integer',
             'total_amount' => 'decimal:2',
@@ -37,6 +39,14 @@ class Payroll extends Model
     public function isDraft(): bool
     {
         return $this->status === 'draft';
+    }
+
+    /**
+     * Determine whether this payroll period is an annual THR run.
+     */
+    public function isThr(): bool
+    {
+        return $this->type === 'thr';
     }
 
     /**

@@ -59,6 +59,7 @@ class UpdateEmployeeRequest extends FormRequest
             'bank_name' => ['nullable', 'string', 'max:50'],
             'bank_account_number' => ['nullable', 'string', 'max:30'],
             'bank_account_holder' => ['nullable', 'string', 'max:255'],
+            'bank_branch' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

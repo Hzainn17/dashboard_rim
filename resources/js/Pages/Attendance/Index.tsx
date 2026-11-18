@@ -17,11 +17,13 @@ import {
     MapPin,
     Navigation,
     Plus,
+    RefreshCw,
     Sparkles,
     Timer,
     X,
 } from 'lucide-react';
 import { AppShell } from '@/Components/dashboard/app-shell';
+import { useOfficeGps } from '@/lib/geolocation';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
 
@@ -45,6 +47,12 @@ type AttendanceItem = {
     cooldown_remaining_seconds?: number;
     shortage_minutes: number;
     status: 'hadir' | 'kurang_jam' | 'izin' | 'sakit' | 'cuti' | 'alpha' | 'site_visit' | 'ganti_hari';
+    is_auto_closed?: boolean;
+    adjustment_type?: 'none' | 'check_in' | 'check_out' | 'full_day';
+    adjustment_status?: 'none' | 'pending' | 'approved' | 'rejected';
+    adjusted_check_in_time?: string | null;
+    adjusted_check_out_time?: string | null;
+    adjustment_reason?: string | null;
     site_visit_project_id?: number | null;
     site_visit_project_name?: string | null;
     site_visit_photo_url?: string | null;
@@ -92,6 +100,7 @@ type OfficeSetting = {
 
 interface Props {
     todayAttendance: AttendanceItem | null;
+    unclosedPastAttendance?: AttendanceItem | null;
     activeOvertime: ActiveOvertime | null;
     history: AttendanceItem[];
     leaveRequests: LeaveRequestItem[];
@@ -134,6 +143,7 @@ function formatSecondsLive(totalSeconds: number) {
 
 export default function AttendanceIndex({
     todayAttendance,
+    unclosedPastAttendance,
     activeOvertime,
     history,
     leaveRequests,
@@ -160,12 +170,35 @@ export default function AttendanceIndex({
     const [compensationType, setCompensationType] = useState<'overtime' | 'day_off_exchange'>('overtime');
     const [exchangeDate, setExchangeDate] = useState<string>('');
 
+    const gps = useOfficeGps(
+        Number(officeSetting.latitude),
+        Number(officeSetting.longitude),
+        officeSetting.radius_meters,
+    );
+
     // Early checkout warning modal
     const [earlyCheckoutModal, setEarlyCheckoutModal] = useState(false);
 
+    // Case 1 & 2: Attendance Adjustment Modal (Lupa Absen Masuk / Pulang / Seharian)
+    const [adjustmentModal, setAdjustmentModal] = useState(false);
+
+    // Case 3: Unclosed Past Attendance Confirm Checkout Modal
+    const [confirmCheckoutModal, setConfirmCheckoutModal] = useState(
+        typeof window !== 'undefined' &&
+            new URLSearchParams(window.location.search).get('confirm_checkout') === '1',
+    );
+
+    // Case 4: Split Check-Out & Direct Overtime Modal
+    const [splitOvertimeModal, setSplitOvertimeModal] = useState(false);
+
+    const todayOvertime = auth?.todayOvertime ?? null;
+    const hasLeaveToday = auth?.hasLeaveToday ?? false;
     const isLockedDay =
-        !!todayAttendance &&
-        ['ganti_hari', 'izin', 'cuti', 'sakit'].includes(todayAttendance.status);
+        (!!todayAttendance &&
+            ['ganti_hari', 'izin', 'cuti', 'sakit'].includes(todayAttendance.status)) ||
+        hasLeaveToday;
+    const hasCompletedOvertimeToday =
+        !!todayOvertime && todayOvertime.status !== 'active';
     const isWorking = !!todayAttendance?.check_in_at && !todayAttendance?.check_out_at;
     const hasCheckedOut = !!todayAttendance?.check_out_at;
 
@@ -208,7 +241,8 @@ export default function AttendanceIndex({
         return () => window.clearInterval(id);
     }, [isWorking, hasCheckedOut, activeOvertime]);
 
-    const canStartOvertime = hasCheckedOut && cooldownSeconds === 0;
+    const canStartOvertime =
+        !isLockedDay && !hasCompletedOvertimeToday && hasCheckedOut && cooldownSeconds === 0;
 
     const checkInDate = todayAttendance?.check_in_at ? new Date(todayAttendance.check_in_at) : null;
 
@@ -231,14 +265,52 @@ export default function AttendanceIndex({
         reason: '',
     });
 
+    // Case 1 & 2: Attendance Adjustment Form (Lupa Absen Masuk / Pulang / Seharian)
+    const adjustmentForm = useForm({
+        adjustment_type: 'check_in' as 'check_in' | 'check_out' | 'full_day',
+        date: todayDate,
+        adjusted_check_in_time: '08:00',
+        adjusted_check_out_time: '17:00',
+        notes: '',
+    });
+
+    // Case 3: Confirm Past Unclosed Checkout Form
+    const defaultPastTargetTime = unclosedPastAttendance?.check_in_at
+        ? new Date(
+              new Date(unclosedPastAttendance.check_in_at).getTime() +
+                  (unclosedPastAttendance.target_work_minutes || 540) * 60000,
+          )
+              .toTimeString()
+              .slice(0, 5)
+        : '17:00';
+
+    const confirmCheckoutForm = useForm({
+        attendance_id: unclosedPastAttendance?.id ?? 0,
+        check_out_time: defaultPastTargetTime,
+        notes: 'Lupa checkout kemarin saat pulang',
+    });
+
+    // Case 4: Split Check-Out & Direct Overtime Form
+    const splitOvertimeForm = useForm({
+        project_id: projects[0]?.id ?? '',
+        task_description: '',
+    });
+
     const handleCheckIn = () => {
         router.post(
             route('attendance.check-in'),
             {
                 mode,
-                distance_meters: 45,
+                ...(gps.latitude !== null && gps.longitude !== null
+                    ? {
+                          latitude: gps.latitude,
+                          longitude: gps.longitude,
+                          distance_meters: gps.distanceMeters ?? 0,
+                      }
+                    : {}),
                 site_visit_project_id: mode === 'site_visit' ? Number(siteProjectId) : null,
                 notes,
+                is_weekend: weekendSim,
                 compensation_type: weekendSim ? compensationType : 'none',
                 exchange_date: weekendSim && compensationType === 'day_off_exchange' ? exchangeDate : null,
             },
@@ -285,9 +357,39 @@ export default function AttendanceIndex({
         });
     };
 
+    const handleAdjustmentSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        adjustmentForm.post(route('attendance.adjustment'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setAdjustmentModal(false);
+                adjustmentForm.reset('notes');
+            },
+        });
+    };
+
+    const handleConfirmCheckoutSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        confirmCheckoutForm.post(route('attendance.confirm-checkout'), {
+            preserveScroll: true,
+            onSuccess: () => setConfirmCheckoutModal(false),
+        });
+    };
+
+    const handleSplitOvertimeSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        splitOvertimeForm.post(route('attendance.checkout-and-overtime'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setSplitOvertimeModal(false);
+                splitOvertimeForm.reset('task_description');
+            },
+        });
+    };
+
     return (
         <>
-            <Head title="Presensi Harian & Lembur — RIM Studio Arsitektur" />
+            <Head title="Presensi Harian" />
             <AppShell initialRole={initialRole} initialActive={activeMenu}>
                 <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
                     {/* Header */}
@@ -301,24 +403,91 @@ export default function AttendanceIndex({
                             </h1>
                         </div>
 
-                        {/* Weekend Policy Toggle (For testing/weekend check-in) */}
-                        <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
-                            <CalendarClock className="size-4 text-primary" />
-                            <span className="text-muted-foreground">Mode Hari Kerja:</span>
+                        {/* Actions: Koreksi Presensi & Weekend Policy Toggle */}
+                        <div className="flex flex-wrap items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => setWeekendSim(!weekendSim)}
-                                className={cn(
-                                    'rounded-md px-2 py-0.5 font-medium transition-colors',
-                                    weekendSim
-                                        ? 'bg-amber-100 text-amber-900'
-                                        : 'bg-secondary text-secondary-foreground',
-                                )}
+                                onClick={() => setAdjustmentModal(true)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-accent/40 px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
                             >
-                                {weekendSim ? 'Akhir Pekan (Sabtu/Minggu)' : 'Reguler (Senin–Jumat)'}
+                                <Clock className="size-3.5 text-primary" />
+                                Lupa Absen / Koreksi Jam
                             </button>
+
+                            <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+                                <CalendarClock className="size-4 text-primary" />
+                                <span className="text-muted-foreground">Mode Hari Kerja:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setWeekendSim(!weekendSim)}
+                                    className={cn(
+                                        'rounded-md px-2 py-0.5 font-medium transition-colors',
+                                        weekendSim
+                                            ? 'bg-amber-100 text-amber-900'
+                                            : 'bg-secondary text-secondary-foreground',
+                                    )}
+                                >
+                                    {weekendSim ? 'Akhir Pekan (Sabtu/Minggu)' : 'Reguler (Senin–Jumat)'}
+                                </button>
+                            </div>
                         </div>
                     </div>
+
+                    {/* Case 3: Unclosed Past Attendance Alert Banner */}
+                    {unclosedPastAttendance && (
+                        <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/90 px-4 py-3.5 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-700" />
+                                <div className="text-xs leading-relaxed">
+                                    <p className="font-semibold text-sm">
+                                        Anda belum mengonfirmasi jam pulang untuk tanggal {unclosedPastAttendance.date}
+                                    </p>
+                                    <p className="text-amber-800">
+                                        Tercatat masuk pukul <strong>{unclosedPastAttendance.check_in_time ?? '08:00'} WIB</strong>
+                                        {unclosedPastAttendance.is_auto_closed ? ' (ditutup otomatis oleh sistem pukul 23:59)' : ''}. Silakan konfirmasi jam kepulangan Anda sebenarnya agar rekap jam kerja akurat.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmCheckoutModal(true)}
+                                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-amber-700 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-amber-800"
+                            >
+                                <CheckCircle2 className="size-3.5" />
+                                Konfirmasi Jam Pulang
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Case 1 & 2: Pending Adjustment Status Banner */}
+                    {todayAttendance?.adjustment_status && todayAttendance.adjustment_status !== 'none' && (
+                        <div
+                            className={cn(
+                                'flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs',
+                                todayAttendance.adjustment_status === 'pending'
+                                    ? 'border-primary/30 bg-accent/50 text-foreground'
+                                    : todayAttendance.adjustment_status === 'approved'
+                                    ? 'border-success/30 bg-success/10 text-success'
+                                    : 'border-destructive/30 bg-destructive/10 text-destructive',
+                            )}
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <Sparkles className="size-4 shrink-0 text-primary" />
+                                <span>
+                                    <strong>Status Koreksi Jam Presensi Hari Ini:</strong>{' '}
+                                    {todayAttendance.adjustment_status === 'pending' &&
+                                        `Menunggu verifikasi Admin di Pusat Approval (Pengajuan masuk: ${todayAttendance.adjusted_check_in_time || '—'}${todayAttendance.adjusted_check_out_time ? `, pulang: ${todayAttendance.adjusted_check_out_time}` : ''})`}
+                                    {todayAttendance.adjustment_status === 'approved' &&
+                                        'Pengajuan koreksi jam kerja Anda telah disetujui Admin dan target 9 jam telah disesuaikan.'}
+                                    {todayAttendance.adjustment_status === 'rejected' &&
+                                        'Pengajuan koreksi jam kerja ditolak oleh Admin.'}
+                                </span>
+                            </div>
+                            <span className="rounded-full bg-background/80 px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase">
+                                {todayAttendance.adjustment_status}
+                            </span>
+                        </div>
+                    )}
 
                     {/* Flash Feedback */}
                     {flash?.success && (
@@ -407,7 +576,7 @@ export default function AttendanceIndex({
                                 ) : (
                                     <>
                                         {/* Weekend Compensation Selector (If Saturday/Sunday) */}
-                                        {weekendSim && !isWorking && !hasCheckedOut && (
+                                        {weekendSim && !isWorking && (
                                             <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 p-4">
                                                 <div className="flex items-start gap-2.5">
                                                     <Sparkles className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -478,24 +647,106 @@ export default function AttendanceIndex({
 
                                         {/* Mode Specific Box: Office GPS vs Site Visit */}
                                         {mode === 'office' ? (
-                                            <div className="flex items-start gap-3 rounded-lg border border-success/25 bg-success/5 p-3.5">
-                                                <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-success/15 text-success">
+                                            <div
+                                                className={cn(
+                                                    'flex items-start gap-3 rounded-lg border p-3.5',
+                                                    gps.status === 'ready' && !gps.isWithinRadius
+                                                        ? 'border-destructive/30 bg-destructive/5'
+                                                        : 'border-success/25 bg-success/5',
+                                                )}
+                                            >
+                                                <span
+                                                    className={cn(
+                                                        'flex size-9 shrink-0 items-center justify-center rounded-md',
+                                                        gps.status === 'ready' && !gps.isWithinRadius
+                                                            ? 'bg-destructive/15 text-destructive'
+                                                            : 'bg-success/15 text-success',
+                                                    )}
+                                                >
                                                     <Navigation className="size-4" />
                                                 </span>
                                                 <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                                         <p className="text-sm font-medium">
-                                                            Validasi GPS Kantor: Dalam Radius
+                                                            {gps.status === 'loading'
+                                                                ? 'Mendeteksi Lokasi GPS...'
+                                                                : gps.status === 'error'
+                                                                ? 'GPS Tidak Aktif / Izin Ditolak'
+                                                                : gps.isWithinRadius
+                                                                ? 'Validasi GPS Kantor: Dalam Radius'
+                                                                : 'Di Luar Radius Kantor'}
                                                         </p>
-                                                        <span className="font-mono text-xs font-semibold text-success">
-                                                            {todayAttendance?.check_in_distance_meters ?? 45}m / {officeSetting.radius_meters}m
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span
+                                                                className={cn(
+                                                                    'font-mono text-xs font-semibold',
+                                                                    gps.status === 'ready' && !gps.isWithinRadius
+                                                                        ? 'text-destructive'
+                                                                        : 'text-success',
+                                                                )}
+                                                            >
+                                                                {todayAttendance?.check_in_distance_meters !== null &&
+                                                                todayAttendance?.check_in_distance_meters !== undefined
+                                                                    ? `${todayAttendance.check_in_distance_meters}m`
+                                                                    : gps.distanceMeters !== null
+                                                                    ? `${gps.distanceMeters}m`
+                                                                    : '—'}{' '}
+                                                                / {officeSetting.radius_meters}m
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={gps.refresh}
+                                                                title="Refresh lokasi GPS"
+                                                                className="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted"
+                                                            >
+                                                                <RefreshCw
+                                                                    className={cn(
+                                                                        'size-3',
+                                                                        gps.status === 'loading' && 'animate-spin',
+                                                                    )}
+                                                                />
+                                                                <span>GPS</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <p className="truncate text-xs text-muted-foreground">
-                                                        {officeSetting.office_name} · Koordinat ({officeSetting.latitude}, {officeSetting.longitude})
+                                                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                                        {gps.status === 'error'
+                                                            ? gps.errorMessage
+                                                            : `${officeSetting.office_name} · (${officeSetting.latitude}, ${officeSetting.longitude})`}
                                                     </p>
-                                                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-success/15">
-                                                        <div className="h-full w-[45%] rounded-full bg-success" />
+                                                    <div
+                                                        className={cn(
+                                                            'mt-2 h-1.5 overflow-hidden rounded-full',
+                                                            gps.status === 'ready' && !gps.isWithinRadius
+                                                                ? 'bg-destructive/15'
+                                                                : 'bg-success/15',
+                                                        )}
+                                                    >
+                                                        <div
+                                                            className={cn(
+                                                                'h-full rounded-full transition-all',
+                                                                gps.status === 'ready' && !gps.isWithinRadius
+                                                                    ? 'bg-destructive'
+                                                                    : 'bg-success',
+                                                            )}
+                                                            style={{
+                                                                width: `${
+                                                                    gps.distanceMeters !== null
+                                                                        ? Math.min(
+                                                                              100,
+                                                                              Math.round(
+                                                                                  (gps.distanceMeters /
+                                                                                      Math.max(
+                                                                                          1,
+                                                                                          officeSetting.radius_meters,
+                                                                                      )) *
+                                                                                      100,
+                                                                              ),
+                                                                          )
+                                                                        : 45
+                                                                }%`,
+                                                            }}
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
@@ -541,7 +792,7 @@ export default function AttendanceIndex({
                                                                 src={
                                                                     photoPreview ||
                                                                     todayAttendance?.site_visit_photo_url ||
-                                                                    '/projects/interior-kafe.png'
+                                                                    '/project-covers/interior-kafe.png'
                                                                 }
                                                                 alt="Bukti Site Visit"
                                                                 className="h-28 w-full object-cover"
@@ -683,6 +934,17 @@ export default function AttendanceIndex({
                                                         <CheckCircle2 className="size-3.5" />
                                                         Selesai 9 Jam Penuh
                                                     </button>
+                                                    {!hasCompletedOvertimeToday && !isLockedDay && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSplitOvertimeModal(true)}
+                                                            title="Lupa absen pulang & langsung lanjut lembur malam tanpa tunggu 1 jam"
+                                                            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-primary/15 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/25"
+                                                        >
+                                                            <Timer className="size-3.5" />
+                                                            Check-out & Langsung Lembur
+                                                        </button>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
@@ -704,7 +966,20 @@ export default function AttendanceIndex({
                             </div>
 
                             <div className="flex flex-1 flex-col justify-between gap-4 p-5">
-                                {activeOvertime ? (
+                                {isLockedDay ? (
+                                    <div className="flex flex-1 flex-col items-center justify-center gap-2.5 rounded-lg border border-dashed bg-muted/30 p-5 text-center">
+                                        <span className="flex size-10 items-center justify-center rounded-full bg-purple-100 text-purple-800">
+                                            <Lock className="size-5" />
+                                        </span>
+                                        <p className="text-sm font-semibold">
+                                            Lembur Dinonaktifkan Hari Ini
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Anda sedang terdaftar atau memiliki pengajuan{' '}
+                                            <strong>Izin / Cuti / Sakit / Ganti Hari</strong> untuk hari ini.
+                                        </p>
+                                    </div>
+                                ) : activeOvertime ? (
                                     <div className="flex flex-col gap-4">
                                         <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-4">
                                             <div className="flex items-center justify-between">
@@ -734,11 +1009,51 @@ export default function AttendanceIndex({
                                             Selesai Lembur & Kirim Approval
                                         </button>
                                     </div>
+                                ) : hasCompletedOvertimeToday && todayOvertime ? (
+                                    <div className="flex flex-1 flex-col justify-between gap-4">
+                                        <div className="rounded-lg border border-success/30 bg-success/5 p-4">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-0.5 text-[11px] font-semibold text-success">
+                                                    <CheckCircle2 className="size-3.5" />
+                                                    Lembur Hari Ini Selesai
+                                                </span>
+                                                <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-semibold uppercase">
+                                                    {todayOvertime.status}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-sm font-semibold">
+                                                {todayOvertime.project_name}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {todayOvertime.task_description}
+                                            </p>
+                                            <p className="mt-2 font-mono text-xs text-muted-foreground">
+                                                {todayOvertime.start_time} – {todayOvertime.end_time ?? '—'} WIB (
+                                                {todayOvertime.duration_minutes ?? 0} menit)
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-lg border border-dashed bg-muted/40 px-3.5 py-2.5 text-xs text-muted-foreground">
+                                            Sesi lembur hari ini sudah tercatat. Setiap karyawan hanya dapat mengajukan lembur <strong>1 kali per hari</strong>.
+                                        </div>
+                                    </div>
                                 ) : (
                                     <form onSubmit={handleStartOvertime} className="flex flex-1 flex-col gap-3">
                                         {!hasCheckedOut ? (
-                                            <div className="rounded-lg border border-dashed bg-muted/40 px-3.5 py-2.5 text-xs text-muted-foreground">
-                                                Selesaikan jam kerja normal & lakukan <strong>Check-out</strong> terlebih dahulu. Tombol lembur akan aktif setelah jeda istirahat 1 jam.
+                                            <div className="flex flex-col gap-2 rounded-lg border border-dashed bg-muted/40 px-3.5 py-2.5 text-xs text-muted-foreground">
+                                                <span>
+                                                    Selesaikan jam kerja normal & lakukan <strong>Check-out</strong> terlebih dahulu. Tombol lembur akan aktif setelah jeda istirahat 1 jam.
+                                                </span>
+                                                {isWorking && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSplitOvertimeModal(true)}
+                                                        className="inline-flex items-center gap-1.5 self-start rounded-md bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/25"
+                                                    >
+                                                        <Sparkles className="size-3" />
+                                                        Lupa Check-out? Split 9 Jam & Langsung Lembur
+                                                    </button>
+                                                )}
                                             </div>
                                         ) : cooldownSeconds > 0 ? (
                                             <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/80 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-900">
@@ -1144,6 +1459,307 @@ export default function AttendanceIndex({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {/* Modal Case 1 & 2: Pengajuan Koreksi Presensi / Lupa Absen */}
+                {adjustmentModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div
+                            className="fixed inset-0 bg-black/30 backdrop-blur-xs"
+                            onClick={() => setAdjustmentModal(false)}
+                        />
+                        <form
+                            onSubmit={handleAdjustmentSubmit}
+                            className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
+                        >
+                            <div className="flex items-center justify-between border-b pb-3">
+                                <div className="flex items-center gap-2">
+                                    <Clock className="size-5 text-primary" />
+                                    <h3 className="text-base font-semibold">
+                                        Ajukan Koreksi Presensi / Lupa Absen
+                                    </h3>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setAdjustmentModal(false)}
+                                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                                >
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 flex flex-col gap-3.5">
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">Jenis Koreksi *</label>
+                                    <select
+                                        value={adjustmentForm.data.adjustment_type}
+                                        onChange={(e) =>
+                                            adjustmentForm.setData(
+                                                'adjustment_type',
+                                                e.target.value as 'check_in' | 'check_out' | 'full_day',
+                                            )
+                                        }
+                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                    >
+                                        <option value="check_in">Lupa Absen Masuk (Koreksi Jam Masuk)</option>
+                                        <option value="check_out">Lupa Absen Pulang (Koreksi Jam Pulang)</option>
+                                        <option value="full_day">Absen Susulan Seharian (Masuk & Pulang)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">Tanggal *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        max={todayDate}
+                                        value={adjustmentForm.data.date}
+                                        onChange={(e) => adjustmentForm.setData('date', e.target.value)}
+                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    {(adjustmentForm.data.adjustment_type === 'check_in' ||
+                                        adjustmentForm.data.adjustment_type === 'full_day') && (
+                                        <div>
+                                            <label className="mb-1 block text-xs font-medium">
+                                                Jam Masuk Sebenarnya *
+                                            </label>
+                                            <input
+                                                type="time"
+                                                required
+                                                value={adjustmentForm.data.adjusted_check_in_time}
+                                                onChange={(e) =>
+                                                    adjustmentForm.setData('adjusted_check_in_time', e.target.value)
+                                                }
+                                                className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {(adjustmentForm.data.adjustment_type === 'check_out' ||
+                                        adjustmentForm.data.adjustment_type === 'full_day') && (
+                                        <div>
+                                            <label className="mb-1 block text-xs font-medium">
+                                                Jam Pulang Sebenarnya *
+                                            </label>
+                                            <input
+                                                type="time"
+                                                required
+                                                value={adjustmentForm.data.adjusted_check_out_time}
+                                                onChange={(e) =>
+                                                    adjustmentForm.setData('adjusted_check_out_time', e.target.value)
+                                                }
+                                                className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Alasan / Keterangan Bukti *
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        required
+                                        value={adjustmentForm.data.notes}
+                                        onChange={(e) => adjustmentForm.setData('notes', e.target.value)}
+                                        placeholder="Contoh: Sudah standby di studio sejak 08:00, langsung koordinasi site plan dengan Lead Architect…"
+                                        className="w-full rounded-lg border bg-background p-2.5 text-sm outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setAdjustmentModal(false)}
+                                    className="h-9 rounded-lg border bg-card px-3.5 text-xs font-medium hover:bg-muted"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={adjustmentForm.processing}
+                                    className="h-9 rounded-lg bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    Kirim ke Pusat Approval
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* Modal Case 3: Konfirmasi Jam Pulang Kemarin */}
+                {confirmCheckoutModal && unclosedPastAttendance && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div
+                            className="fixed inset-0 bg-black/30 backdrop-blur-xs"
+                            onClick={() => setConfirmCheckoutModal(false)}
+                        />
+                        <form
+                            onSubmit={handleConfirmCheckoutSubmit}
+                            className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
+                        >
+                            <div className="flex items-start gap-3 border-b pb-3">
+                                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                                    <AlertTriangle className="size-5" />
+                                </span>
+                                <div>
+                                    <h3 className="text-base font-semibold">
+                                        Konfirmasi Jam Pulang ({unclosedPastAttendance.date})
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Jam masuk tercatat pukul{' '}
+                                        <strong>{unclosedPastAttendance.check_in_time ?? '08:00'} WIB</strong>.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 flex flex-col gap-3.5">
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Jam Pulang Sebenarnya (WIB) *
+                                    </label>
+                                    <input
+                                        type="time"
+                                        required
+                                        value={confirmCheckoutForm.data.check_out_time}
+                                        onChange={(e) =>
+                                            confirmCheckoutForm.setData('check_out_time', e.target.value)
+                                        }
+                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">Catatan (Opsional)</label>
+                                    <textarea
+                                        rows={2}
+                                        value={confirmCheckoutForm.data.notes}
+                                        onChange={(e) => confirmCheckoutForm.setData('notes', e.target.value)}
+                                        className="w-full rounded-lg border bg-background p-2.5 text-sm outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmCheckoutModal(false)}
+                                    className="h-9 rounded-lg border bg-card px-3.5 text-xs font-medium hover:bg-muted"
+                                >
+                                    Tutup
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={confirmCheckoutForm.processing}
+                                    className="h-9 rounded-lg bg-amber-700 px-4 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+                                >
+                                    Simpan Jam Pulang
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* Modal Case 4: Split Check-Out & Direct Overtime */}
+                {splitOvertimeModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div
+                            className="fixed inset-0 bg-black/30 backdrop-blur-xs"
+                            onClick={() => setSplitOvertimeModal(false)}
+                        />
+                        <form
+                            onSubmit={handleSplitOvertimeSubmit}
+                            className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
+                        >
+                            <div className="flex items-start gap-3 border-b pb-3">
+                                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                    <Timer className="size-5" />
+                                </span>
+                                <div>
+                                    <h3 className="text-base font-semibold">
+                                        Check-out Reguler & Langsung Lembur
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Lupa check-out saat masuk jam lembur? Sistem membagi waktu kerja Anda secara adil:
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-3 rounded-lg bg-muted/60 p-3 text-xs leading-relaxed">
+                                <ul className="space-y-1">
+                                    <li>
+                                        • <strong>9 Jam Kerja Reguler:</strong> Diselesaikan otomatis (0 mnt kurang jam)
+                                    </li>
+                                    <li>
+                                        • <strong>Jeda Istirahat 1 Jam:</strong> Dihitung otomatis setelah target 9 jam
+                                    </li>
+                                    <li>
+                                        • <strong>Sesi Lembur Malam:</strong> Langsung aktif berjalan tanpa tunggu lagi
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div className="mt-4 flex flex-col gap-3.5">
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Proyek yang Dilemburkan *
+                                    </label>
+                                    <select
+                                        required
+                                        value={splitOvertimeForm.data.project_id}
+                                        onChange={(e) =>
+                                            splitOvertimeForm.setData('project_id', Number(e.target.value))
+                                        }
+                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
+                                    >
+                                        {projects.map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Target / Uraian Tugas Lembur *
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        required
+                                        value={splitOvertimeForm.data.task_description}
+                                        onChange={(e) =>
+                                            splitOvertimeForm.setData('task_description', e.target.value)
+                                        }
+                                        placeholder="Contoh: Finalisasi gambar kerja tender & render fasad…"
+                                        className="w-full rounded-lg border bg-background p-2.5 text-sm outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSplitOvertimeModal(false)}
+                                    className="h-9 rounded-lg border bg-card px-3.5 text-xs font-medium hover:bg-muted"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={splitOvertimeForm.processing}
+                                    className="h-9 rounded-lg bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    Selesaikan Reguler & Mulai Lembur
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 )}
             </AppShell>

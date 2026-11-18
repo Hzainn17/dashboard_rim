@@ -14,9 +14,12 @@ type SidebarContentProps = {
 };
 
 export function BrandMark() {
+    const { studio } = usePage<PageProps>().props;
+    const logoUrl = studio?.logo_url || '/rim-projects-logo.png';
+
     return (
         <div className="flex items-center gap-3">
-            <img src="/rim-projects-logo.png" alt="RIM Projects" width={705} height={354} className="h-9 w-auto mix-blend-multiply" />
+            <img src={logoUrl} alt={studio?.name || 'RIM Projects'} width={705} height={354} className="h-9 w-auto max-w-[110px] object-contain" />
             <div className="border-l pl-3 leading-tight">
                 <p className="text-sm font-semibold tracking-tight">Studio</p>
                 <p className="text-[11px] text-muted-foreground">Arsitektur</p>
@@ -90,18 +93,30 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
 
             <div className="border-t p-3">
                 <div className="flex items-center gap-3 rounded-lg p-2">
-                    <MemberAvatar id={fallbackUser.id} className="size-9 text-xs ring-0" />
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{displayName}</p>
-                        <span
-                            className={cn(
-                                'mt-0.5 inline-flex rounded-full px-1.5 py-px text-[10px] font-medium',
-                                role === 'admin' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground',
-                            )}
-                        >
-                            {roleLabel}
-                        </span>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => router.visit(route('my-profile.index'))}
+                        title="Buka Profil Saya"
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                        <MemberAvatar
+                            id={auth?.user?.id ?? fallbackUser.id}
+                            name={displayName}
+                            photoUrl={auth?.user?.photo_url}
+                            className="size-9 shrink-0 text-xs ring-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{displayName}</p>
+                            <span
+                                className={cn(
+                                    'mt-0.5 inline-flex rounded-full px-1.5 py-px text-[10px] font-medium',
+                                    role === 'admin' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground',
+                                )}
+                            >
+                                {roleLabel}
+                            </span>
+                        </div>
+                    </button>
                     <button
                         type="button"
                         onClick={() => router.post(route('logout'))}

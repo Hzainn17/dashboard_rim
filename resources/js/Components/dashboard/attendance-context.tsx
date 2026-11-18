@@ -15,7 +15,7 @@ type AttendanceState = {
     skipCooldown: () => void;
     siteProject: string | null;
     setSiteProject: (id: string | null) => void;
-    checkIn: () => void;
+    checkIn: (coords?: { latitude?: number | null; longitude?: number | null; distance_meters?: number | null }) => void;
     checkOut: () => void;
     now: Date | null;
 };
@@ -76,20 +76,31 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         return () => window.clearInterval(id);
     }, [isWorking, hasCheckedOut]);
 
-    const checkIn = useCallback(() => {
-        setCheckedInAt(new Date());
-        setCheckedOutAt(null);
-        setElapsedSeconds(0);
-        setCooldownRemainingSeconds(3600);
-        router.post(
-            route('attendance.check-in'),
-            {
-                mode: mode === 'site' ? 'site_visit' : 'office',
-                distance_meters: 45,
-            },
-            { preserveScroll: true, preserveState: true },
-        );
-    }, [mode]);
+    const checkIn = useCallback(
+        (coords?: { latitude?: number | null; longitude?: number | null; distance_meters?: number | null }) => {
+            setCheckedInAt(new Date());
+            setCheckedOutAt(null);
+            setElapsedSeconds(0);
+            setCooldownRemainingSeconds(3600);
+            router.post(
+                route('attendance.check-in'),
+                {
+                    mode: mode === 'site' ? 'site_visit' : 'office',
+                    ...(coords?.latitude != null && coords?.longitude != null
+                        ? {
+                              latitude: coords.latitude,
+                              longitude: coords.longitude,
+                          }
+                        : {}),
+                    ...(coords?.distance_meters != null
+                        ? { distance_meters: coords.distance_meters }
+                        : {}),
+                },
+                { preserveScroll: true, preserveState: true },
+            );
+        },
+        [mode],
+    );
 
     const checkOut = useCallback(() => {
         setCheckedOutAt(new Date());

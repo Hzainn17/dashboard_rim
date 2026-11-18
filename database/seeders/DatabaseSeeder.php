@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             OfficeSettingSeeder::class,
             UserSeeder::class,
             ProjectSeeder::class,
+            CalendarEventSeeder::class,
         ]);
     }
 }

@@ -8,7 +8,7 @@ export default function Dashboard() {
 
     return (
         <>
-            <Head title="RIM Studio Arsitektur — Dashboard Studio" />
+            <Head title="Dashboard" />
             <AppShell initialRole={initialRole} />
         </>
     );

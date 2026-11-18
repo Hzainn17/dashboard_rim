@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { router, usePage } from '@inertiajs/react';
 import { Bell, CheckCircle2, LogIn, Menu, Search } from 'lucide-react';
 import {
     DropdownMenu,
@@ -10,17 +11,57 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Kbd } from '@/Components/ui/kbd';
-import { notifications as initialNotifications } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
+import { type PageProps } from '@/types';
 import { formatClock, useAttendance } from './attendance-context';
 
 export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
+    const { notifications: serverNotifications = [] } = usePage<PageProps>().props;
     const inputRef = useRef<HTMLInputElement>(null);
     const [isMac, setIsMac] = useState(true);
-    const [items, setItems] = useState(initialNotifications);
+    const [items, setItems] = useState(serverNotifications);
     const { now, checkedInAt, checkedOutAt, checkIn } = useAttendance();
+
+    useEffect(() => {
+        setItems(serverNotifications);
+    }, [serverNotifications]);
+
     const unread = items.filter((n) => n.unread).length;
     const isWorking = checkedInAt && !checkedOutAt;
+
+    const handleMarkAllRead = () => {
+        setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+        router.post(
+            route('notifications.mark-read'),
+            {},
+            { preserveScroll: true, preserveState: true },
+        );
+    };
+
+    const handleNotificationClick = (item: (typeof items)[number]) => {
+        if (item.unread) {
+            setItems((prev) =>
+                prev.map((x) => (x.id === item.id ? { ...x, unread: false } : x)),
+            );
+            router.post(
+                route('notifications.mark-read'),
+                {},
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onFinish: () => {
+                        if (item.url) {
+                            router.visit(item.url);
+                        }
+                    },
+                },
+            );
+            return;
+        }
+        if (item.url) {
+            router.visit(item.url);
+        }
+    };
 
     useEffect(() => {
         setIsMac(/Mac|iPhone|iPad/.test(navigator.platform));
@@ -80,7 +121,7 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
 
                 <button
                     type="button"
-                    onClick={checkIn}
+                    onClick={() => checkIn()}
                     disabled={!!isWorking}
                     className={cn(
                         'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
@@ -115,7 +156,7 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 {unread > 0 && (
                                     <button
                                         type="button"
-                                        onClick={() => setItems((prev) => prev.map((n) => ({ ...n, unread: false })))}
+                                        onClick={handleMarkAllRead}
                                         className="text-xs font-normal text-primary hover:underline"
                                     >
                                         Tandai dibaca
@@ -125,24 +166,30 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
-                            {items.map((n) => (
-                                <DropdownMenuItem
-                                    key={n.id}
-                                    onClick={() => setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, unread: false } : x)))}
-                                    className="items-start gap-2.5 py-2"
-                                >
-                                    <span
-                                        className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', n.unread ? 'bg-primary' : 'bg-transparent')}
-                                        aria-hidden="true"
-                                    />
-                                    <span className="flex flex-col gap-0.5">
-                                        <span className={cn('text-sm leading-snug', n.unread ? 'font-medium' : 'text-muted-foreground')}>
-                                            {n.title}
+                            {items.length === 0 ? (
+                                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                                    Belum ada notifikasi aktivitas terbaru.
+                                </div>
+                            ) : (
+                                items.map((n) => (
+                                    <DropdownMenuItem
+                                        key={n.id}
+                                        onClick={() => handleNotificationClick(n)}
+                                        className="cursor-pointer items-start gap-2.5 py-2"
+                                    >
+                                        <span
+                                            className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', n.unread ? 'bg-primary' : 'bg-transparent')}
+                                            aria-hidden="true"
+                                        />
+                                        <span className="flex flex-col gap-0.5">
+                                            <span className={cn('text-sm leading-snug', n.unread ? 'font-medium' : 'text-muted-foreground')}>
+                                                {n.title}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">{n.time}</span>
                                         </span>
-                                        <span className="text-xs text-muted-foreground">{n.time}</span>
-                                    </span>
-                                </DropdownMenuItem>
-                            ))}
+                                    </DropdownMenuItem>
+                                ))
+                            )}
                         </DropdownMenuGroup>
                     </DropdownMenuContent>
                 </DropdownMenu>

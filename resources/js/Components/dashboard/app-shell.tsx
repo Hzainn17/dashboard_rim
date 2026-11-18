@@ -42,6 +42,10 @@ export function AppShell({
             router.visit(route('employees.index'));
             return;
         }
+        if (id === 'karyawan') {
+            router.visit(route('employees.index'));
+            return;
+        }
         if (id === 'presensi-harian' || id === 'presensi-saya') {
             router.visit(route('attendance.index'));
             return;
@@ -52,6 +56,26 @@ export function AppShell({
         }
         if (id === 'presensi-rekap') {
             router.visit(route('attendance.monitoring'));
+            return;
+        }
+        if (id === 'projects') {
+            router.visit(route('projects.index'));
+            return;
+        }
+        if (id === 'kalender') {
+            router.visit(route('calendar.index'));
+            return;
+        }
+        if (id === 'payroll') {
+            router.visit(route('payroll.index'));
+            return;
+        }
+        if (id === 'profil' || id === 'slip') {
+            router.visit(route('my-profile.index'));
+            return;
+        }
+        if (id === 'pengaturan') {
+            router.visit(route('settings.index'));
             return;
         }
         setActive(id);

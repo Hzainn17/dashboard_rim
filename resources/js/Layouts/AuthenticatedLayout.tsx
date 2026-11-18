@@ -38,8 +38,9 @@ export default function AuthenticatedLayout({
     header,
     children,
 }: PropsWithChildren<{ header?: ReactNode }>) {
-    const { auth } = usePage<PageProps>().props;
+    const { auth, studio } = usePage<PageProps>().props;
     const user = auth.user;
+    const companyLogo = studio?.logo_url || '/rim-projects-logo.png';
 
     // Perspective switch (defaults to user role, allows previewing the other perspective)
     const [perspective, setPerspective] = useState<'admin' | 'employee'>(
@@ -117,9 +118,9 @@ export default function AuthenticatedLayout({
                 <div className="flex h-16 items-center px-5 border-b border-sidebar-border">
                     <div className="flex items-center gap-3">
                         <img
-                            src="/rim-projects-logo.png"
-                            alt="RIM Projects"
-                            className="h-9 w-auto mix-blend-multiply"
+                            src={companyLogo}
+                            alt={studio?.name || 'RIM Projects'}
+                            className="h-9 w-auto max-w-[110px] object-contain"
                         />
                         <div className="border-l border-sidebar-border pl-3 leading-tight">
                             <p className="text-sm font-semibold tracking-tight text-foreground">Studio</p>
@@ -304,9 +305,9 @@ export default function AuthenticatedLayout({
             >
                 <div className="flex h-16 items-center justify-between px-5 border-b border-sidebar-border">
                     <img
-                        src="/rim-projects-logo.png"
-                        alt="RIM Projects"
-                        className="h-8 w-auto mix-blend-multiply"
+                        src={companyLogo}
+                        alt={studio?.name || 'RIM Projects'}
+                        className="h-8 w-auto max-w-[110px] object-contain"
                     />
                     <button
                         type="button"

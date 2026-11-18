@@ -137,6 +137,10 @@ Fitur disusun mengikuti kerangka roadmap yang sudah disetujui, dikelompokkan per
       - *Opsi Uang Lembur:* Seluruh jam kerja hari itu otomatis masuk ke akumulasi jam lembur akhir pekan untuk disetujui admin dan dibayarkan di payroll.
       - *Opsi Ganti Hari Libur (Compensatory Off):* Karyawan memilih 1 tanggal hari kerja biasa (Senin–Jumat) sebagai pengganti.
       - **Mekanisme Kunci Otomatis (*Auto-Lock*):** Pada tanggal hari libur pengganti yang dipilih, sistem otomatis menandai status `ganti_hari`, **mengunci tombol absensi di dashboard**, tidak menganggap karyawan Alpha, dan tidak memotong gaji maupun kuota cuti tahunan.
+  - **Penanganan Kasus Khusus Kehadiran (*Edge Cases & Validasi Cerdas*):**
+    - **1. Lupa Absen Masuk / Koreksi Jam Masuk:** Karyawan yang sudah hadir (mis. standby pukul 08:00 WIB) namun baru sempat menekan tombol absen pukul 09:00 WIB dapat menggunakan tombol **Lupa Absen / Koreksi Jam** untuk mengajukan jam masuk sebenarnya beserta alasan wajib. Setelah disetujui Admin di *Pusat Approval*, `check_in_at` dan target pulang 9 jam otomatis dihitung ulang.
+    - **2. Lupa Absen Pulang (Auto-Cutoff 23:59 & Dialog Konfirmasi):** Scheduler malam (`attendance:auto-close` pukul 23:59 WIB) menutup otomatis sesi yang belum check-out dengan jam pulang provisional target 9 jam dan menandainya `is_auto_closed`. Saat karyawan membuka aplikasi keesokan harinya, banner/modal **Konfirmasi Jam Pulang** langsung tampil agar karyawan memasukkan jam pulang sebenarnya dan memperbarui status durasi kerja.
+    - **3. Lupa Absen Pulang Saat Lanjut Lembur Malam (*Split Check-out & Direct Overtime*):** Jika karyawan melewati target 9 jam dan lupa check-out reguler saat sudah memasuki waktu lembur, tersedia aksi **Check-out & Langsung Lembur**. Sistem membagi durasi secara adil: kerja reguler diselesaikan tepat 9 jam (0 menit kurang jam), jeda istirahat 1 jam diperhitungkan otomatis, dan sesi lembur malam langsung aktif berjalan tanpa harus menunggu jeda 1 jam lagi di layar.
 
 - **Desain Sub-Menu Presensi Admin (3 Sub-Menu Efisien):**
   - **1. Presensi Saya:** Halaman absensi pribadi untuk admin sendiri (menggunakan layout dan komponen yang sama persis dengan halaman karyawan).
@@ -144,6 +148,7 @@ Fitur disusun mengikuti kerangka roadmap yang sudah disetujui, dikelompokkan per
     - *Tab Site Visit:* Verifikasi absensi lapangan arsitek (nama, proyek, uraian kegiatan, **foto bukti kamera**, koordinat GPS lapangan, tombol Setujui/Tolak).
     - *Tab Izin & Cuti:* Verifikasi permohonan izin, cuti tahunan (cek sisa kuota cuti), atau sakit (preview surat dokter).
     - *Tab Lembur Malam:* Verifikasi sesi lembur malam (proyek yang dikerjakan, waktu, dan durasi jam lembur).
+    - *Tab Koreksi Presensi:* Verifikasi pengajuan koreksi jam masuk, jam pulang, atau absen susulan dari karyawan yang lupa absen, menampilkan perbandingan jam asli vs jam koreksi beserta alasannya.
   - **3. Rekap & Monitoring Tim:**
     - *Live Tracker Hari Ini:* Widget cepat memantau jumlah staf yang ada di kantor, sedang site visit, atau belum hadir.
     - *Tabel Rekap Bulanan:* Rekap kehadiran seluruh divisi (Arsitek, Drafter, 3D, Admin) untuk kebutuhan payroll.
@@ -244,10 +249,11 @@ Fitur disusun mengikuti kerangka roadmap yang sudah disetujui, dikelompokkan per
 **C. Alur admin studio: Monitoring & Pusat Approval (Fase 2)**
 
 1. Admin melihat badge notifikasi pengajuan baru di sidebar: **🕒 Presensi Tim → Pusat Approval [X]**.
-2. Admin membuka **Pusat Approval** (Satu Halaman Terpadu dengan 3 Tab):
+2. Admin membuka **Pusat Approval** (Satu Halaman Terpadu dengan 4 Tab):
    - *Tab Site Visit:* Meninjau permohonan absen di lokasi proyek, memeriksa foto bukti kamera dan GPS lapangan, lalu menekan **[Setujui]** atau **[Tolak]**.
    - *Tab Izin & Cuti:* Meninjau alasan izin/cuti, memeriksa sisa cuti tahunan atau surat dokter, lalu memberikan keputusan persetujuan.
    - *Tab Lembur:* Meninjau klaim lembur malam hari (proyek yang dikerjakan & durasi jam lembur), lalu menyetujuinya untuk diteruskan ke payroll.
+   - *Tab Koreksi Presensi:* Meninjau pengajuan lupa absen masuk/pulang beserta perbandingan jam asli vs koreksi dan alasannya, lalu menekan **[Setujui]** agar target 9 jam otomatis menyesuaikan.
 3. Untuk monitoring harian dan rekap: Admin membuka **🕒 Presensi Tim → Rekap & Monitoring**:
    - Memantau live status: siapa yang sedang ada di kantor, site visit, atau belum hadir.
    - Mengunduh rekap kehadiran bulanan via tombol **[Ekspor Excel / PDF]**.

@@ -129,6 +129,10 @@ export interface DashboardMetrics {
 export type PageProps<
     T extends Record<string, unknown> = Record<string, unknown>,
 > = T & {
+    studio?: {
+        name: string;
+        logo_url: string;
+    };
     auth: {
         user: User;
         todayAttendance?: {
@@ -150,7 +154,32 @@ export type PageProps<
             elapsed_seconds: number;
             status: string;
         } | null;
+        todayOvertime?: {
+            id: number;
+            project_id: number;
+            project_name: string;
+            task_description: string;
+            start_time: string;
+            end_time?: string | null;
+            duration_minutes?: number | null;
+            status: 'active' | 'pending' | 'approved' | 'rejected';
+        } | null;
+        hasLeaveToday?: boolean;
+        unclosedPastAttendance?: {
+            id: number;
+            date: string;
+            date_formatted: string;
+            check_in_time?: string | null;
+            target_time?: string | null;
+        } | null;
     };
+    notifications?: Array<{
+        id: number;
+        title: string;
+        time: string;
+        unread: boolean;
+        url: string | null;
+    }>;
     flash?: {
         success?: string | null;
         error?: string | null;

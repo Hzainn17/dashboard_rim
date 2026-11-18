@@ -36,6 +36,18 @@ class AttendanceController extends Controller
             ->whereDate('date', $today)
             ->first();
 
+        $unclosedPastAttendance = Attendance::query()
+            ->with('siteVisitProject:id,name')
+            ->where('user_id', $user->id)
+            ->whereDate('date', '<', $today)
+            ->whereNotNull('check_in_at')
+            ->where(function ($q): void {
+                $q->whereNull('check_out_at')
+                    ->orWhere('is_auto_closed', true);
+            })
+            ->latest('date')
+            ->first();
+
         $activeOvertime = Overtime::query()
             ->with('project:id,name')
             ->where('user_id', $user->id)
@@ -83,6 +95,7 @@ class AttendanceController extends Controller
 
         return Inertia::render('Attendance/Index', [
             'todayAttendance' => $todayAttendance ? $this->formatAttendance($todayAttendance) : null,
+            'unclosedPastAttendance' => $unclosedPastAttendance ? $this->formatAttendance($unclosedPastAttendance) : null,
             'activeOvertime' => $activeOvertime ? [
                 'id' => $activeOvertime->id,
                 'project_id' => $activeOvertime->project_id,
@@ -145,11 +158,21 @@ class AttendanceController extends Controller
             'longitude' => ['nullable', 'numeric'],
             'site_visit_project_id' => ['required_if:mode,site_visit', 'nullable', 'exists:projects,id'],
             'notes' => ['nullable', 'string', 'max:500'],
+            'is_weekend' => ['nullable', 'boolean'],
             'compensation_type' => ['nullable', Rule::in(['none', 'overtime', 'day_off_exchange'])],
             'exchange_date' => ['required_if:compensation_type,day_off_exchange', 'nullable', 'date', 'after:today'],
         ]);
 
-        $distance = $validated['distance_meters'] ?? 45;
+        $hasCoords = isset($validated['latitude'], $validated['longitude']);
+        $distance = $hasCoords
+            ? $this->calculateHaversineMeters(
+                (float) $validated['latitude'],
+                (float) $validated['longitude'],
+                (float) $officeSetting->latitude,
+                (float) $officeSetting->longitude,
+            )
+            : ($validated['distance_meters'] ?? 45);
+
         if ($validated['mode'] === 'office' && $distance > $officeSetting->radius_meters) {
             return redirect()->back()->with(
                 'error',
@@ -157,7 +180,7 @@ class AttendanceController extends Controller
             );
         }
 
-        $isWeekend = $today->isWeekend();
+        $isWeekend = $today->isWeekend() || $request->boolean('is_weekend');
         $compensationType = $isWeekend ? ($validated['compensation_type'] ?? 'overtime') : 'none';
 
         $attendance = $this->upsertAttendanceForDate($user->id, $today, [
@@ -264,6 +287,10 @@ class AttendanceController extends Controller
             ->whereDate('date', $today)
             ->first();
 
+        if ($blockReason = $this->validateCanStartOvertime($user, $today, $todayAttendance)) {
+            return redirect()->back()->with('error', $blockReason);
+        }
+
         $overtime = Overtime::query()->create([
             'attendance_id' => $todayAttendance?->id,
             'user_id' => $user->id,
@@ -358,6 +385,171 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Submit an attendance adjustment request (e.g. forgot check-in, forgot check-out, or full day missing).
+     */
+    public function requestAdjustment(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'adjustment_type' => ['required', Rule::in(['check_in', 'check_out', 'full_day'])],
+            'date' => ['required', 'date', 'before_or_equal:today'],
+            'adjusted_check_in_time' => ['nullable', 'date_format:H:i'],
+            'adjusted_check_out_time' => ['nullable', 'date_format:H:i'],
+            'notes' => ['required', 'string', 'max:500'],
+        ]);
+
+        $dateStr = Carbon::parse($validated['date'])->format('Y-m-d');
+        $adjustedIn = ! empty($validated['adjusted_check_in_time'])
+            ? Carbon::parse("{$dateStr} {$validated['adjusted_check_in_time']}")
+            : null;
+        $adjustedOut = ! empty($validated['adjusted_check_out_time'])
+            ? Carbon::parse("{$dateStr} {$validated['adjusted_check_out_time']}")
+            : null;
+
+        $attendance = $this->upsertAttendanceForDate($user->id, $dateStr, [
+            'adjustment_type' => $validated['adjustment_type'],
+            'adjustment_status' => 'pending',
+            'adjusted_check_in_at' => $adjustedIn,
+            'adjusted_check_out_at' => $adjustedOut,
+            'adjustment_reason' => $validated['notes'],
+        ]);
+
+        ActivityLog::record(
+            action: 'attendance.adjustment_requested',
+            description: "{$user->name} mengajukan koreksi presensi ({$validated['adjustment_type']}) untuk tanggal {$dateStr}",
+            reference: $attendance,
+            user: $user,
+        );
+
+        return redirect()->back()->with('success', 'Pengajuan koreksi presensi berhasil dikirim ke Pusat Approval Admin.');
+    }
+
+    /**
+     * Confirm actual checkout time for past unclosed attendance (forgot checkout yesterday/past).
+     */
+    public function confirmCheckout(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'attendance_id' => ['required', 'exists:attendances,id'],
+            'check_out_time' => ['required', 'date_format:H:i'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $attendance = Attendance::query()
+            ->where('id', $validated['attendance_id'])
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $dateStr = $attendance->date->format('Y-m-d');
+        $checkOutAt = Carbon::parse("{$dateStr} {$validated['check_out_time']}");
+
+        if ($attendance->check_in_at && $checkOutAt->lt($attendance->check_in_at)) {
+            $checkOutAt = $checkOutAt->addDay();
+        }
+
+        $actualMinutes = $attendance->check_in_at
+            ? max(1, (int) $attendance->check_in_at->diffInMinutes($checkOutAt))
+            : 540;
+
+        $targetMinutes = $attendance->target_work_minutes ?: 540;
+        $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
+        $status = $shortageMinutes > 0 ? 'kurang_jam' : 'hadir';
+
+        $attendance->update([
+            'check_out_at' => $checkOutAt,
+            'actual_work_minutes' => $actualMinutes,
+            'shortage_minutes' => $shortageMinutes,
+            'status' => $status,
+            'is_auto_closed' => false,
+            'notes' => $validated['notes']
+                ? ($attendance->notes ? "{$attendance->notes} | {$validated['notes']}" : $validated['notes'])
+                : $attendance->notes,
+        ]);
+
+        ActivityLog::record(
+            action: 'attendance.confirmed_checkout',
+            description: "{$user->name} mengonfirmasi jam pulang tanggal {$dateStr} ({$validated['check_out_time']} WIB)",
+            reference: $attendance,
+            user: $user,
+        );
+
+        return redirect()->back()->with('success', "Konfirmasi jam pulang tanggal {$dateStr} berhasil disimpan ({$validated['check_out_time']} WIB).");
+    }
+
+    /**
+     * Check out regular hours (exact 9 hours) and directly transition to active evening overtime.
+     */
+    public function checkoutAndOvertime(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $today = Carbon::today();
+
+        $validated = $request->validate([
+            'project_id' => ['required', 'exists:projects,id'],
+            'task_description' => ['required', 'string', 'max:500'],
+        ]);
+
+        $attendance = Attendance::query()
+            ->where('user_id', $user->id)
+            ->whereDate('date', $today)
+            ->whereNotNull('check_in_at')
+            ->firstOrFail();
+
+        if ($blockReason = $this->validateCanStartOvertime($user, $today, $attendance)) {
+            return redirect()->back()->with('error', $blockReason);
+        }
+
+        $targetMinutes = $attendance->target_work_minutes ?: 540;
+        $elapsedFromCheckIn = (int) $attendance->check_in_at->diffInMinutes(now());
+
+        // Cap regular work at target 9 hours if user has exceeded it
+        $regCheckOutAt = $elapsedFromCheckIn >= $targetMinutes
+            ? $attendance->check_in_at->copy()->addMinutes($targetMinutes)
+            : now();
+
+        $actualMinutes = (int) $attendance->check_in_at->diffInMinutes($regCheckOutAt);
+        $shortageMinutes = max(0, $targetMinutes - $actualMinutes);
+
+        $attendance->update([
+            'check_out_at' => $regCheckOutAt,
+            'actual_work_minutes' => $actualMinutes,
+            'shortage_minutes' => $shortageMinutes,
+            'status' => $shortageMinutes > 0 ? 'kurang_jam' : 'hadir',
+        ]);
+
+        // Break cooldown: 60 minutes after regular checkout
+        $cooldownEnd = $regCheckOutAt->copy()->addHour();
+
+        // If 1 hour cooldown has physically passed, overtime starts at cooldownEnd or now
+        $otStartAt = $cooldownEnd->lte(now()) ? $cooldownEnd : now();
+
+        $overtime = Overtime::query()->create([
+            'attendance_id' => $attendance->id,
+            'user_id' => $user->id,
+            'project_id' => $validated['project_id'],
+            'source' => 'regular',
+            'start_at' => $otStartAt,
+            'task_description' => $validated['task_description'],
+            'status' => 'active',
+        ]);
+
+        ActivityLog::record(
+            action: 'overtime.direct_split',
+            description: "{$user->name} menyelesaikan kerja reguler (9 Jam Penuh) dan langsung mulai lembur proyek",
+            reference: $overtime,
+            user: $user,
+        );
+
+        return redirect()->back()->with(
+            'success',
+            'Check-out reguler berhasil dicatat (9 Jam Penuh) dan sesi lembur malam langsung aktif!'
+        );
+    }
+
+    /**
      * Display the Admin Approval Center (/attendance/approvals) with 3 tabs.
      */
     public function approvals(): Response
@@ -424,18 +616,33 @@ class AttendanceController extends Controller
                 'status' => $ot->status,
             ]);
 
+        $adjustments = Attendance::query()
+            ->with(['user.employee'])
+            ->where('adjustment_status', '!=', 'none')
+            ->orderByRaw("CASE WHEN adjustment_status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('date')
+            ->get()
+            ->map(fn (Attendance $att) => [
+                ...$this->formatAttendance($att),
+                'user_name' => $att->user?->name ?? 'Karyawan',
+                'employee_code' => $att->user?->employee?->employee_code ?? 'RIM-000',
+                'position' => $att->user?->employee?->position ?? 'Arsitek',
+            ]);
+
         $counts = [
             'site_visit_pending' => $siteVisits->filter(
                 fn (array $s) => $s['site_visit_status'] === 'pending' || $s['compensation_status'] === 'pending'
             )->count(),
             'leave_pending' => $leaveRequests->where('status', 'pending')->count(),
             'overtime_pending' => $overtimes->where('status', 'pending')->count(),
+            'adjustment_pending' => $adjustments->where('adjustment_status', 'pending')->count(),
         ];
 
         return Inertia::render('Attendance/Approvals', [
             'siteVisits' => $siteVisits->values(),
             'leaveRequests' => $leaveRequests->values(),
             'overtimes' => $overtimes->values(),
+            'adjustments' => $adjustments->values(),
             'counts' => $counts,
         ]);
     }
@@ -564,6 +771,73 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Approve or reject an Attendance Adjustment request.
+     */
+    public function approveAdjustment(Request $request, Attendance $attendance): RedirectResponse
+    {
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(['approve', 'reject'])],
+            'rejection_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($validated['action'] === 'approve') {
+            $updates = [
+                'adjustment_status' => 'approved',
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+            ];
+
+            if ($attendance->adjusted_check_in_at) {
+                $updates['check_in_at'] = $attendance->adjusted_check_in_at;
+            }
+
+            if ($attendance->adjusted_check_out_at) {
+                $updates['check_out_at'] = $attendance->adjusted_check_out_at;
+            }
+
+            $effectiveCheckIn = $updates['check_in_at'] ?? $attendance->check_in_at;
+            $effectiveCheckOut = $updates['check_out_at'] ?? $attendance->check_out_at;
+
+            if ($effectiveCheckIn && $effectiveCheckOut) {
+                $actualMinutes = max(1, (int) $effectiveCheckIn->diffInMinutes($effectiveCheckOut));
+                $targetMinutes = $attendance->target_work_minutes ?: 540;
+                $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
+
+                $updates['actual_work_minutes'] = $actualMinutes;
+                $updates['shortage_minutes'] = $shortageMinutes;
+                $updates['status'] = $shortageMinutes > 0 ? 'kurang_jam' : 'hadir';
+            }
+
+            $attendance->update($updates);
+
+            ActivityLog::record(
+                action: 'attendance.adjustment_approved',
+                description: "Admin menyetujui koreksi presensi {$attendance->user?->name} tanggal {$attendance->date->format('Y-m-d')}",
+                reference: $attendance,
+                user: $request->user(),
+            );
+
+            return redirect()->back()->with('success', 'Pengajuan koreksi presensi berhasil disetujui.');
+        }
+
+        $attendance->update([
+            'adjustment_status' => 'rejected',
+            'notes' => $validated['rejection_reason']
+                ? ($attendance->notes ? "{$attendance->notes} | Ditolak: {$validated['rejection_reason']}" : "Ditolak: {$validated['rejection_reason']}")
+                : $attendance->notes,
+        ]);
+
+        ActivityLog::record(
+            action: 'attendance.adjustment_rejected',
+            description: "Admin menolak koreksi presensi {$attendance->user?->name} tanggal {$attendance->date->format('Y-m-d')}",
+            reference: $attendance,
+            user: $request->user(),
+        );
+
+        return redirect()->back()->with('success', 'Pengajuan koreksi presensi ditolak.');
+    }
+
+    /**
      * Display the Team Attendance Recap & Monitoring page (/attendance/monitoring).
      */
     public function monitoring(Request $request): Response
@@ -620,7 +894,7 @@ class AttendanceController extends Controller
                 'name' => $u->name,
                 'employee_code' => $u->employee?->employee_code ?? sprintf('RIM-%03d', $u->id),
                 'position' => $u->employee?->position ?? 'Arsitek',
-                'department' => $u->employee?->department ?? 'Desain',
+                'department' => $u->employee?->department ?? 'Perencanaan',
                 'present_days' => $presentDays,
                 'site_visit_days' => $siteVisitDays,
                 'kurang_jam_days' => $kurangJamDays,
@@ -874,7 +1148,7 @@ class AttendanceController extends Controller
                     $u->employee?->employee_code ?? sprintf('RIM-%03d', $u->id),
                     $u->name,
                     $u->employee?->position ?? 'Arsitek',
-                    $u->employee?->department ?? 'Desain',
+                    $u->employee?->department ?? 'Perencanaan',
                     $userAtts->whereIn('status', ['hadir', 'kurang_jam', 'site_visit'])->count(),
                     $userAtts->where('mode', 'site_visit')->count(),
                     $userAtts->where('status', 'kurang_jam')->count(),
@@ -890,6 +1164,39 @@ class AttendanceController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * Validate whether a user is allowed to start an overtime session today (max 1x/day & not on leave).
+     */
+    private function validateCanStartOvertime(User $user, Carbon $today, ?Attendance $todayAttendance): ?string
+    {
+        if ($todayAttendance && in_array($todayAttendance->status, ['ganti_hari', 'izin', 'cuti', 'sakit'], true)) {
+            return "Tidak dapat memulai lembur karena status presensi hari ini adalah {$todayAttendance->status}.";
+        }
+
+        $hasLeaveToday = LeaveRequest::query()
+            ->where('user_id', $user->id)
+            ->whereDate('start_date', '<=', $today)
+            ->whereDate('end_date', '>=', $today)
+            ->where('status', 'approved')
+            ->exists();
+
+        if ($hasLeaveToday) {
+            return 'Tidak dapat memulai lembur karena Anda memiliki pengajuan Izin / Cuti / Sakit untuk hari ini.';
+        }
+
+        $alreadyHasOvertimeToday = Overtime::query()
+            ->where('user_id', $user->id)
+            ->whereDate('start_at', $today)
+            ->whereIn('status', ['active', 'pending', 'approved'])
+            ->exists();
+
+        if ($alreadyHasOvertimeToday) {
+            return 'Anda sudah mencatat sesi lembur hari ini. Lembur hanya diperbolehkan 1 kali per hari.';
+        }
+
+        return null;
     }
 
     /**
@@ -961,6 +1268,14 @@ class AttendanceController extends Controller
             'cooldown_remaining_seconds' => $cooldownRemainingSeconds,
             'shortage_minutes' => $att->shortage_minutes,
             'status' => $att->status,
+            'is_auto_closed' => (bool) $att->is_auto_closed,
+            'adjustment_type' => $att->adjustment_type ?? 'none',
+            'adjustment_status' => $att->adjustment_status ?? 'none',
+            'adjusted_check_in_at' => $att->adjusted_check_in_at?->toIso8601String(),
+            'adjusted_check_out_at' => $att->adjusted_check_out_at?->toIso8601String(),
+            'adjusted_check_in_time' => $att->adjusted_check_in_at?->format('H:i'),
+            'adjusted_check_out_time' => $att->adjusted_check_out_at?->format('H:i'),
+            'adjustment_reason' => $att->adjustment_reason,
             'site_visit_project_id' => $att->site_visit_project_id,
             'site_visit_project_name' => $att->siteVisitProject?->name,
             'site_visit_photo_url' => $att->site_visit_photo_url,
@@ -1020,7 +1335,7 @@ class AttendanceController extends Controller
                     'target_work_minutes' => 540,
                     'status' => 'site_visit',
                     'site_visit_project_id' => $project?->id,
-                    'site_visit_photo_url' => '/projects/interior-kafe.png',
+                    'site_visit_photo_url' => '/project-covers/interior-kafe.png',
                     'site_visit_status' => 'pending',
                     'notes' => 'Inspeksi progres pemasangan plafon & elektrikal lapangan',
                 ]);
@@ -1050,5 +1365,20 @@ class AttendanceController extends Controller
                 ]);
             }
         }
+    }
+
+    /**
+     * Calculate Haversine distance in meters between two GPS coordinates.
+     */
+    private function calculateHaversineMeters(float $lat1, float $lon1, float $lat2, float $lon2): int
+    {
+        $earthRadius = 6371000;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) * sin($dLon / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return (int) round($earthRadius * $c);
     }
 }
