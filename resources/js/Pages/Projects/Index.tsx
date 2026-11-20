@@ -39,7 +39,7 @@ interface ProjectCardData extends UnifiedProjectCardData {
     client_phone?: string | null;
     drive_url?: string | null;
     description?: string | null;
-    status: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
+    status: 'survey' | 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
     start_date?: string | null;
     due_date?: string | null;
     due_date_formatted?: string | null;
@@ -85,6 +85,7 @@ interface AddonOption {
 interface Props extends PageProps {
     projects: ProjectCardData[];
     metrics: Metrics;
+    section?: 'planning' | 'field';
     filters: {
         search?: string;
         category?: string;
@@ -109,6 +110,7 @@ const defaultStages = [
 
 export default function ProjectIndex({
     auth,
+    section = 'planning',
     projects,
     metrics,
     filters,
@@ -126,6 +128,7 @@ export default function ProjectIndex({
     const { flash } = usePage<PageProps>().props;
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
     const isAdmin = auth.user.role === 'admin';
+    const isFieldSection = section === 'field';
     const [search, setSearch] = useState(filters.search || '');
     const [selectedCategory, setSelectedCategory] = useState(filters.category || 'all');
     const [selectedStatus, setSelectedStatus] = useState(filters.status || 'all');
@@ -143,7 +146,7 @@ export default function ProjectIndex({
         }>
     ) => {
         router.get(
-            route('projects.index'),
+            route(isFieldSection ? 'projects.field' : 'projects.index'),
             {
                 search: newFilters.search !== undefined ? newFilters.search : search,
                 category:
@@ -190,7 +193,8 @@ export default function ProjectIndex({
         location: '',
         category: 'Paket 1',
         package_name: 'Paket 1',
-        project_type: 'perencanaan',
+        project_type: isFieldSection ? 'pembangunan' : 'perencanaan',
+        building_type: 'rumah_hunian' as 'rumah_hunian' | 'komersial' | 'interior',
         package_addons: [] as string[],
         building_area: '',
         estimated_budget: '',
@@ -227,10 +231,16 @@ export default function ProjectIndex({
     const handlePackageChange = (pkgId: string) => {
         const pkg = packages.find((p) => p.id === pkgId);
         const newBudget = calculateBudget(pkgId, data.building_area, data.package_addons);
+        const isInteriorPkg = pkgId.toLowerCase().includes('interior');
         setData((prev) => ({
             ...prev,
             package_name: pkgId,
             category: pkgId,
+            building_type: isInteriorPkg
+                ? 'interior'
+                : prev.building_type === 'interior'
+                ? 'rumah_hunian'
+                : prev.building_type,
             stages: pkg?.default_stages?.length ? pkg.default_stages : prev.stages,
             estimated_budget: newBudget || prev.estimated_budget,
         }));
@@ -329,18 +339,26 @@ export default function ProjectIndex({
     ];
 
     return (
-        <AppShell initialRole={initialRole} initialActive="projects">
-            <Head title="Project Management" />
+        <AppShell initialRole={initialRole} initialActive={isFieldSection ? 'field-projects' : 'projects'}>
+            <Head title={isFieldSection ? 'Proyek Lapangan' : 'Proyek Perencanaan'} />
 
             <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
                 {/* Page Heading */}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div className="flex flex-col gap-1">
                         <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-                            Manajemen Portofolio & Tahapan Desain
+                            {isFieldSection
+                                ? 'Manajemen Konstruksi & Proyek Fisik Lapangan'
+                                : 'Manajemen Portofolio & Tahapan Perencanaan Desain'}
                         </p>
                         <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                            {isAdmin ? 'Galeri Proyek Studio' : 'Proyek Saya'}{' '}
+                            {isFieldSection
+                                ? isAdmin
+                                    ? 'Proyek Lapangan (Pembangunan)'
+                                    : 'Proyek Lapangan Saya'
+                                : isAdmin
+                                ? 'Proyek Perencanaan Studio'
+                                : 'Proyek Perencanaan Saya'}{' '}
                             <span className="text-muted-foreground font-normal">
                                 ({projects.length} proyek)
                             </span>
@@ -485,6 +503,7 @@ export default function ProjectIndex({
                                 className="h-9 rounded-lg border bg-background px-3 text-xs font-medium text-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                             >
                                 <option value="all">Semua Status</option>
+                                <option value="survey">Tahap Survey</option>
                                 <option value="ongoing">Sedang Berjalan</option>
                                 <option value="review">Asistensi / Review</option>
                                 <option value="planning">Perencanaan</option>
@@ -730,6 +749,58 @@ export default function ProjectIndex({
                                     </div>
                                 </div>
 
+                                {/* Jenis Bangunan (Menentukan Template Form Data Eksisting Klien) */}
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Jenis Bangunan / Form Data Eksisting Klien <span className="text-rose-500">*</span>
+                                    </label>
+                                    {data.package_name.toLowerCase().includes('interior') ? (
+                                        <div className="mt-1.5 flex items-center justify-between rounded-lg border border-[#46797b]/40 bg-[#46797b]/10 px-3 py-2 text-xs">
+                                            <span className="font-semibold text-foreground">
+                                                Interior (Otomatis sesuai Paket Interior)
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground">
+                                                Form Klien: Interior Designer Documents
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {[
+                                                {
+                                                    value: 'rumah_hunian' as const,
+                                                    title: 'Rumah Hunian',
+                                                    desc: 'Form data penghuni, ruang Lt. 1–2, gaya hidup & data teknis rumah',
+                                                },
+                                                {
+                                                    value: 'komersial' as const,
+                                                    title: 'Komersial / Bisnis',
+                                                    desc: 'Form profil bisnis, customer, operasional, area usaha & identitas brand',
+                                                },
+                                            ].map((opt) => {
+                                                const active = data.building_type === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => setData('building_type', opt.value)}
+                                                        className={cn(
+                                                            'rounded-lg border p-2.5 text-left transition-colors',
+                                                            active
+                                                                ? 'border-[#46797b] bg-[#46797b]/10 ring-1 ring-[#46797b]'
+                                                                : 'bg-background hover:bg-muted',
+                                                        )}
+                                                    >
+                                                        <p className="text-xs font-semibold text-foreground">{opt.title}</p>
+                                                        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                                                            {opt.desc}
+                                                        </p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Add-on & Custom Scope */}
                                 <div className="sm:col-span-2 rounded-xl border bg-muted/20 p-3">
                                     <label className="text-xs font-semibold text-foreground">
@@ -817,6 +888,7 @@ export default function ProjectIndex({
                                         onChange={(e) => setData('status', e.target.value)}
                                         className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     >
+                                        <option value="survey">Tahap Survey (Pra-Dealing)</option>
                                         <option value="ongoing">Sedang Berjalan</option>
                                         <option value="planning">Perencanaan</option>
                                         <option value="review">Asistensi / Review</option>

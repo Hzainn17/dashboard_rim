@@ -21,8 +21,6 @@ import { CameraCaptureModal } from '@/Components/CameraCaptureModal';
 import { cn } from '@/lib/utils';
 import { formatClock, formatCooldown, formatDuration, useAttendance, type AttendanceMode } from './attendance-context';
 
-const TARGET_MS = 9 * 60 * 60 * 1000;
-
 export function AttendanceWidget() {
     const { auth, officeSetting, siteVisitProjects = [] } = usePage<
         PageProps & {
@@ -35,6 +33,9 @@ export function AttendanceWidget() {
         }
     >().props;
     const isFieldWorker = auth?.workType === 'lapangan';
+    const targetWorkHours = auth?.targetWorkHours ?? (isFieldWorker ? 8 : 9);
+    const targetWorkMinutes = auth?.todayAttendance?.target_work_minutes ?? auth?.targetWorkMinutes ?? targetWorkHours * 60;
+    const TARGET_MS = targetWorkMinutes * 60 * 1000;
     const toItem = (p: (typeof siteVisitProjects)[number]) => ({
         value: String(p.id),
         label: p.location ? `${p.name} (${p.location})` : p.name,
@@ -95,7 +96,7 @@ export function AttendanceWidget() {
     const isWorking = !!checkedInAt && !checkedOutAt;
     const elapsed = elapsedMs;
     const elapsedMinutes = Math.floor(elapsed / 60000);
-    const shortageMinutes = Math.max(0, 540 - elapsedMinutes);
+    const shortageMinutes = Math.max(0, targetWorkMinutes - elapsedMinutes);
     const progress = Math.min(100, (elapsed / TARGET_MS) * 100);
     const overtime = Math.max(0, elapsed - TARGET_MS);
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
@@ -122,7 +123,11 @@ export function AttendanceWidget() {
                         <h2 id="attendance-title" className="text-sm font-semibold text-foreground">
                             Presensi Hari Ini
                         </h2>
-                        <p className="text-xs text-accent-foreground/80">Target kerja 9 jam · Jam masuk 08:00 WIB</p>
+                        <p className="text-xs text-accent-foreground/80">
+                            {isFieldWorker
+                                ? `Target kerja ${targetWorkHours} jam · Senin–Sabtu (08:00–16:00 WIB)`
+                                : `Target kerja ${targetWorkHours} jam · Senin–Jumat (08:00–17:00 WIB)`}
+                        </p>
                     </div>
                 </div>
                 <ModeToggle mode={mode} onChange={setMode} disabled={isWorking} />
@@ -358,7 +363,7 @@ export function AttendanceWidget() {
                     <div
                         className="mt-3 h-2 overflow-hidden rounded-full bg-accent"
                         role="progressbar"
-                        aria-label="Progres target 9 jam kerja"
+                        aria-label={`Progres target ${targetWorkHours} jam kerja`}
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-valuenow={Math.round(progress)}
@@ -516,7 +521,7 @@ export function AttendanceWidget() {
                                     <strong className="text-foreground">
                                         {formatDuration(elapsed, false)}
                                     </strong>{' '}
-                                    dari target 9 jam (540 menit). Checkout sekarang akan mencatat kekurangan{' '}
+                                    dari target {targetWorkHours} jam ({targetWorkMinutes} menit). Checkout sekarang akan mencatat kekurangan{' '}
                                     <strong className="text-amber-700">
                                         {shortageMinutes} menit
                                     </strong>{' '}

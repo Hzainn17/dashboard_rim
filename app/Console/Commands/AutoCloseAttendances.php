@@ -19,13 +19,14 @@ class AutoCloseAttendances extends Command
     public function handle(): int
     {
         $unclosed = Attendance::query()
+            ->with('user.employee')
             ->whereDate('date', '<=', Carbon::today())
             ->whereNotNull('check_in_at')
             ->whereNull('check_out_at')
             ->get();
 
         foreach ($unclosed as $attendance) {
-            $targetMinutes = $attendance->target_work_minutes ?: 540;
+            $targetMinutes = $attendance->target_work_minutes ?: ($attendance->user?->dailyTargetWorkMinutes() ?? 540);
 
             $attendance->update([
                 'check_out_at' => $attendance->check_in_at->copy()->addMinutes($targetMinutes),

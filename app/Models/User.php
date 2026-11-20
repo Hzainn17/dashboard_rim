@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
 #[Fillable(['name', 'email', 'password', 'role', 'phone', 'is_active', 'photo_url', 'notifications_read_at'])]
 #[Hidden(['password', 'remember_token'])]
@@ -52,6 +53,41 @@ class User extends Authenticatable
     public function isFieldWorker(): bool
     {
         return ($this->employee?->work_type ?? 'kantor') === 'lapangan';
+    }
+
+    /**
+     * Daily target working hours: 8 hours for field workers (08:00-16:00),
+     * or the studio standard (default 9 hours, 08:00-17:00) for office workers.
+     */
+    public function dailyTargetWorkHours(): int
+    {
+        if ($this->isFieldWorker()) {
+            return 8;
+        }
+
+        return OfficeSetting::current()->standard_work_hours ?: 9;
+    }
+
+    /**
+     * Daily target working minutes.
+     */
+    public function dailyTargetWorkMinutes(): int
+    {
+        return $this->dailyTargetWorkHours() * 60;
+    }
+
+    /**
+     * Determine whether the given date is a weekly off day for this employee.
+     * Field workers work Monday-Saturday (off on Sunday only).
+     * Office workers work Monday-Friday (off on Saturday & Sunday).
+     */
+    public function isOffDay(Carbon $date): bool
+    {
+        if ($this->isFieldWorker()) {
+            return $date->isSunday();
+        }
+
+        return $date->isWeekend();
     }
 
     /**

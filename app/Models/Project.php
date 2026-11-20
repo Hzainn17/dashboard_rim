@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'name', 'client_name', 'client_phone', 'location', 'category',
-    'package_name', 'project_type', 'package_addons', 'building_area', 'estimated_budget', 'custom_scope_notes',
+    'package_name', 'project_type', 'building_type', 'package_addons', 'building_area', 'estimated_budget', 'custom_scope_notes',
     'cover_image_url', 'drive_url', 'description', 'status',
     'progress_percent', 'start_date', 'due_date', 'owner_id',
 ])]
@@ -35,6 +35,35 @@ class Project extends Model
     ];
 
     /**
+     * Available building/design categories used to tailor the Client Brief form.
+     *
+     * @var array<string, string>
+     */
+    public const BUILDING_TYPES = [
+        'rumah_hunian' => 'Rumah Hunian',
+        'komersial' => 'Komersial / Bisnis',
+        'interior' => 'Interior',
+    ];
+
+    /**
+     * Resolve the effective building type for this project.
+     * Any Interior package automatically maps to 'interior'.
+     */
+    public function resolvedBuildingType(): string
+    {
+        $pkg = strtolower((string) ($this->package_name ?? $this->category ?? ''));
+        if (str_contains($pkg, 'interior')) {
+            return 'interior';
+        }
+
+        if ($this->building_type && array_key_exists($this->building_type, self::BUILDING_TYPES)) {
+            return $this->building_type;
+        }
+
+        return 'rumah_hunian';
+    }
+
+    /**
      * Project types that have a physical construction site.
      *
      * @var list<string>
@@ -47,6 +76,23 @@ class Project extends Model
     public function hasFieldSite(): bool
     {
         return in_array($this->project_type ?? 'perencanaan', self::FIELD_TYPES, true);
+    }
+
+    /**
+     * Determine whether the given user is authorized to view this project
+     * (Admin, project owner, or assigned team member).
+     */
+    public function isAccessibleBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin() || $this->owner_id === $user->id) {
+            return true;
+        }
+
+        return $this->members()->where('users.id', $user->id)->exists();
     }
 
     /**
@@ -63,7 +109,7 @@ class Project extends Model
         $isFieldWorker = $user?->isFieldWorker() ?? false;
 
         return self::query()
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
             ->when($isFieldWorker, fn ($q) => $q->whereIn('project_type', self::FIELD_TYPES))
             ->orderByRaw("CASE WHEN project_type IN ('pembangunan', 'desain_bangun') THEN 0 ELSE 1 END")
             ->orderBy('name')

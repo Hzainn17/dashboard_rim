@@ -29,7 +29,10 @@ type LiveDashboardMetrics = {
 };
 
 export function QuickMetrics({ role }: { role: Role }) {
-    const { metrics: liveMetrics } = usePage<PageProps & { metrics?: LiveDashboardMetrics }>().props;
+    const { auth, metrics: liveMetrics } = usePage<PageProps & { metrics?: LiveDashboardMetrics }>().props;
+    const isFieldWorker = auth?.workType === 'lapangan';
+    const dailyTargetHours = auth?.targetWorkHours ?? (isFieldWorker ? 8 : 9);
+    const weeklyTargetHours = isFieldWorker ? dailyTargetHours * 6 : dailyTargetHours * 5;
 
     const totalEmp = liveMetrics?.total_employees ?? 1;
     const presentCount = liveMetrics?.present_count ?? 0;
@@ -39,7 +42,7 @@ export function QuickMetrics({ role }: { role: Role }) {
     const activeCount = liveMetrics?.active_projects_count ?? 0;
 
     const weekHours = liveMetrics?.my_week_work_hours ?? 0;
-    const weekPct = Math.min(100, Math.round((weekHours / 45) * 100));
+    const weekPct = Math.min(100, Math.round((weekHours / Math.max(1, weeklyTargetHours)) * 100));
     const myProjectsCount = liveMetrics?.my_active_projects_count ?? 0;
     const myOvertimeHours = liveMetrics?.my_overtime_hours ?? 0;
     const myAttendanceDays = liveMetrics?.my_month_attendance_days ?? 0;
@@ -90,14 +93,16 @@ export function QuickMetrics({ role }: { role: Role }) {
             suffix: 'jam',
             badge: `${weekPct}%`,
             badgeTone: 'positive',
-            hint: 'Target 45 jam / minggu (Sen–Jum)',
+            hint: isFieldWorker
+                ? `Target ${weeklyTargetHours} jam / minggu (Sen–Sab)`
+                : `Target ${weeklyTargetHours} jam / minggu (Sen–Jum)`,
             variant: 'featured',
         },
         {
-            label: 'Proyek Saya',
+            label: isFieldWorker ? 'Proyek Lapangan Saya' : 'Proyek Perencanaan Saya',
             value: String(myProjectsCount),
             suffix: 'aktif',
-            badge: 'On Track',
+            badge: myProjectsCount > 0 ? 'Aktif' : 'Kosong',
             badgeTone: 'positive',
             hint: liveMetrics?.my_active_project_names || 'Belum ada proyek ditugaskan',
             variant: 'standard',

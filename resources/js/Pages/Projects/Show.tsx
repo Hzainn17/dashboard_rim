@@ -20,6 +20,7 @@ import {
     FolderKanban,
     GripVertical,
     HardHat,
+    ImagePlus,
     Layers,
     MapPin,
     MessageSquare,
@@ -42,6 +43,7 @@ import {
 import { PageProps } from '@/types';
 import { cn } from '@/lib/utils';
 import { getAvatarTone } from '@/lib/studio-data';
+import { prepareWebImage } from '@/lib/image-upload';
 
 interface ProjectMemberItem {
     id: number;
@@ -76,6 +78,7 @@ interface ProjectDetailData {
     category: string;
     package_name?: string | null;
     project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun' | null;
+    building_type?: 'rumah_hunian' | 'komersial' | 'interior' | null;
     package_addons?: string[];
     building_area?: number | null;
     estimated_budget?: number | null;
@@ -83,7 +86,7 @@ interface ProjectDetailData {
     cover_image_url: string;
     drive_url?: string | null;
     description?: string | null;
-    status: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
+    status: 'survey' | 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
     progress_percent: number;
     start_date?: string | null;
     start_date_formatted?: string | null;
@@ -152,15 +155,34 @@ interface TeamMemberOption {
     photo_url?: string | null;
 }
 
+interface PackageOption {
+    id: string;
+    name: string;
+    tagline: string;
+    price_per_m2: number;
+    min_area: number;
+    deliverables: string[];
+}
+
+interface AddonOption {
+    id: string;
+    label: string;
+    price_per_m2: number | null;
+    unit: string;
+}
+
 interface Props extends PageProps {
     project: ProjectDetailData;
     kanban: KanbanColumns;
     updates: ProjectUpdateItem[];
     teamMembers: TeamMemberOption[];
+    packages?: PackageOption[];
+    addons?: AddonOption[];
     clientBrief: ProjectBriefData;
 }
 
 const statusOptions: { value: ProjectDetailData['status']; label: string }[] = [
+    { value: 'survey', label: 'Tahap Survey' },
     { value: 'planning', label: 'Perencanaan' },
     { value: 'ongoing', label: 'Sedang Berjalan' },
     { value: 'review', label: 'Asistensi / Review' },
@@ -205,7 +227,16 @@ const kanbanColumnConfig = {
     },
 };
 
-export default function ProjectShow({ auth, project, kanban, updates, teamMembers, clientBrief }: Props) {
+export default function ProjectShow({
+    auth,
+    project,
+    kanban,
+    updates,
+    teamMembers,
+    packages = [],
+    addons = [],
+    clientBrief,
+}: Props) {
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
     const isAdmin = auth.user.role === 'admin';
     const isOwnerOrLead =
@@ -497,14 +528,21 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
         });
     };
 
-    // Edit Project Form
+    // Edit Project Form (disamakan dengan Buat Proyek Baru)
     const editProjectForm = useForm({
         name: project.name,
         client_name: project.client_name,
         client_phone: project.client_phone || '',
         location: project.location || '',
-        category: project.category,
-        project_type: project.project_type || 'perencanaan',
+        category: project.package_name || project.category || 'Paket 1',
+        package_name: project.package_name || project.category || 'Paket 1',
+        project_type: (project.project_type || 'perencanaan') as 'perencanaan' | 'pembangunan' | 'desain_bangun',
+        building_type: (project.building_type || 'rumah_hunian') as 'rumah_hunian' | 'komersial' | 'interior',
+        package_addons: (project.package_addons || []) as string[],
+        building_area: project.building_area != null ? String(project.building_area) : '',
+        estimated_budget: project.estimated_budget != null ? String(project.estimated_budget) : '',
+        custom_scope_notes: project.custom_scope_notes || '',
+        cover_image: null as File | null,
         cover_image_url: project.cover_image_url,
         drive_url: project.drive_url || '',
         description: project.description || '',
@@ -516,11 +554,101 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
             project.members.find((m) => m.role_in_project.toLowerCase().includes('lead'))?.id || '',
     });
 
+    const [editCoverPreview, setEditCoverPreview] = useState(
+        project.cover_image_url || '/project-covers/rumah-tropis.png'
+    );
+    const [editCoverError, setEditCoverError] = useState<string | null>(null);
+
+    const calculateEditBudget = (pkgName: string, areaStr: string, selectedAddons: string[]) => {
+        const area = parseFloat(areaStr);
+        if (!area || isNaN(area) || area <= 0) return '';
+        const pkg = packages.find((p) => p.id === pkgName);
+        if (!pkg || pkg.price_per_m2 === 0) return '';
+
+        let ratePerM2 = pkg.price_per_m2;
+        selectedAddons.forEach((aId) => {
+            const addon = addons.find((a) => a.id === aId);
+            if (addon && addon.price_per_m2) {
+                ratePerM2 += addon.price_per_m2;
+            }
+        });
+        return String(Math.round(area * ratePerM2));
+    };
+
+    const handleEditPackageChange = (pkgId: string) => {
+        const newBudget = calculateEditBudget(
+            pkgId,
+            editProjectForm.data.building_area,
+            editProjectForm.data.package_addons
+        );
+        const isInteriorPkg = pkgId.toLowerCase().includes('interior');
+        editProjectForm.setData({
+            ...editProjectForm.data,
+            package_name: pkgId,
+            category: pkgId,
+            building_type: isInteriorPkg
+                ? 'interior'
+                : editProjectForm.data.building_type === 'interior'
+                ? 'rumah_hunian'
+                : editProjectForm.data.building_type,
+            estimated_budget: newBudget || editProjectForm.data.estimated_budget,
+        });
+    };
+
+    const toggleEditAddon = (addonId: string) => {
+        const nextAddons = editProjectForm.data.package_addons.includes(addonId)
+            ? editProjectForm.data.package_addons.filter((id) => id !== addonId)
+            : [...editProjectForm.data.package_addons, addonId];
+        const newBudget = calculateEditBudget(
+            editProjectForm.data.package_name,
+            editProjectForm.data.building_area,
+            nextAddons
+        );
+        editProjectForm.setData({
+            ...editProjectForm.data,
+            package_addons: nextAddons,
+            estimated_budget: newBudget || editProjectForm.data.estimated_budget,
+        });
+    };
+
+    const handleEditAreaChange = (val: string) => {
+        const newBudget = calculateEditBudget(
+            editProjectForm.data.package_name,
+            val,
+            editProjectForm.data.package_addons
+        );
+        editProjectForm.setData({
+            ...editProjectForm.data,
+            building_area: val,
+            estimated_budget: newBudget || editProjectForm.data.estimated_budget,
+        });
+    };
+
+    const toggleEditMember = (memberId: number) => {
+        if (editProjectForm.data.member_ids.includes(memberId)) {
+            editProjectForm.setData(
+                'member_ids',
+                editProjectForm.data.member_ids.filter((id) => id !== memberId)
+            );
+        } else {
+            editProjectForm.setData('member_ids', [...editProjectForm.data.member_ids, memberId]);
+        }
+    };
+
     const handleEditProjectSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        editProjectForm.put(route('projects.update', project.id), {
+        editProjectForm.transform((d) => ({
+            ...d,
+            _method: 'put',
+        }));
+        editProjectForm.post(route('projects.update', project.id), {
+            forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => setIsEditProjectModalOpen(false),
+            onSuccess: () => {
+                setIsEditProjectModalOpen(false);
+                setEditCoverError(null);
+                editProjectForm.setData('cover_image', null);
+            },
         });
     };
 
@@ -532,9 +660,12 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
         typeof project.days_left === 'number' && project.days_left <= 7 && project.status !== 'done';
     const isOverdue =
         typeof project.days_left === 'number' && project.days_left < 0 && project.status !== 'done';
+    const isFieldProject = isAdmin
+        ? project.project_type === 'pembangunan'
+        : auth?.workType === 'lapangan';
 
     return (
-        <AppShell initialRole={initialRole} initialActive="projects">
+        <AppShell initialRole={initialRole} initialActive={isFieldProject ? 'field-projects' : 'projects'}>
             <Head title={project.name} />
 
             <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
@@ -542,11 +673,11 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Link
-                            href={route('projects.index')}
+                            href={route(isFieldProject ? 'projects.field' : 'projects.index')}
                             className="inline-flex items-center gap-1 font-medium hover:text-foreground"
                         >
                             <ArrowLeft className="size-3.5" />
-                            <span>Semua Proyek</span>
+                            <span>{isFieldProject ? 'Proyek Lapangan' : 'Proyek Perencanaan'}</span>
                         </Link>
                         <span>/</span>
                         <span className="font-semibold text-foreground truncate max-w-xs">
@@ -593,15 +724,17 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
 
                 {/* Project Header Banner & Summary */}
                 <div className="relative overflow-hidden rounded-2xl border bg-card p-5 sm:p-6 shadow-xs">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex-1">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                                <span className="rounded-full bg-[#46797b]/12 px-2.5 py-0.5 text-xs font-semibold text-[#46797b]">
                                     {project.category}
                                 </span>
                                 <span
                                     className={cn(
                                         'rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1',
+                                        project.status === 'survey' &&
+                                            'bg-cyan-50 text-cyan-800 ring-cyan-200',
                                         project.status === 'ongoing' &&
                                             'bg-emerald-50 text-emerald-800 ring-emerald-200',
                                         project.status === 'review' &&
@@ -616,42 +749,51 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                 >
                                     {statusOptions.find((s) => s.value === project.status)?.label}
                                 </span>
+                                {project.project_type && (
+                                    <span className="rounded-full border bg-muted/50 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                        {project.project_type === 'pembangunan'
+                                            ? 'Pembangunan (Lapangan)'
+                                            : project.project_type === 'desain_bangun'
+                                            ? 'Desain & Bangun'
+                                            : 'Perencanaan'}
+                                    </span>
+                                )}
                             </div>
 
-                            <h1 className="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                            <h1 className="mt-2.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
                                 {project.name}
                             </h1>
 
-                            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1.5">
-                                    <Users className="size-3.5" />
+                            <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                                <span className="inline-flex items-center gap-1.5">
+                                    <Users className="size-3.5 text-[#46797b]" />
                                     <span>
                                         Klien: <strong className="text-foreground">{project.client_name}</strong>
                                     </span>
                                 </span>
                                 {project.client_phone && (
-                                    <span className="flex items-center gap-1.5">
-                                        <Phone className="size-3.5" />
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <Phone className="size-3.5 text-muted-foreground/80" />
                                         <span>{project.client_phone}</span>
                                     </span>
                                 )}
                                 {project.location && (
-                                    <span className="flex items-center gap-1.5">
-                                        <MapPin className="size-3.5" />
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <MapPin className="size-3.5 text-muted-foreground/80" />
                                         <span>{project.location}</span>
                                     </span>
                                 )}
                             </div>
 
                             {project.description && (
-                                <p className="mt-2.5 max-w-3xl text-xs text-muted-foreground leading-relaxed">
+                                <p className="mt-3 max-w-3xl text-xs text-muted-foreground leading-relaxed">
                                     {project.description}
                                 </p>
                             )}
                         </div>
 
                         {/* Right Summary Metrics */}
-                        <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 lg:w-72">
+                        <div className="flex shrink-0 flex-col gap-3 rounded-xl border bg-muted/25 p-4 lg:w-80">
                             <div>
                                 <div className="flex items-center justify-between text-xs font-semibold">
                                     <span className="text-muted-foreground">Progres Keseluruhan</span>
@@ -667,7 +809,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                                 ? 'bg-blue-600'
                                                 : project.progress_percent >= 60
                                                 ? 'bg-emerald-500'
-                                                : 'bg-primary'
+                                                : 'bg-[#46797b]'
                                         )}
                                         style={{ width: `${project.progress_percent}%` }}
                                     />
@@ -678,7 +820,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                             </div>
 
                             <div className="flex items-center justify-between border-t pt-2.5 text-xs">
-                                <span className="text-muted-foreground">Target Deadline:</span>
+                                <span className="text-muted-foreground">Target Deadline</span>
                                 {project.due_date ? (
                                     <span
                                         className={cn(
@@ -692,7 +834,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                     >
                                         {project.due_date_formatted}{' '}
                                         {project.days_left !== null && (
-                                            <span className="text-[11px] font-normal">
+                                            <span className="text-[11px] font-normal text-muted-foreground">
                                                 ({project.days_left} hr)
                                             </span>
                                         )}
@@ -704,45 +846,56 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                         </div>
                     </div>
 
-                    {/* Team Members Row */}
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-muted-foreground mr-1">
-                                Tim Proyek:
+                    {/* Team Members & Primary Action Row */}
+                    <div className="mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                            <span className="mr-1 text-xs font-semibold text-muted-foreground">
+                                Tim Proyek ({project.members.length}):
                             </span>
-                            {project.members.map((m) => (
-                                <div
-                                    key={m.id}
-                                    className="inline-flex items-center gap-1.5 rounded-full border bg-background py-0.5 pl-1 pr-2.5 text-xs shadow-xs"
-                                >
+                            {project.members.map((m) => {
+                                const isLead = m.role_in_project.toLowerCase().includes('lead');
+                                return (
                                     <div
+                                        key={m.id}
+                                        title={`${m.name} — ${m.role_in_project}`}
                                         className={cn(
-                                            'size-5 rounded-full text-[10px] font-bold flex items-center justify-center overflow-hidden',
-                                            getAvatarTone(m.id, m.name)
+                                            'inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2.5 text-xs',
+                                            isLead
+                                                ? 'border-[#46797b]/40 bg-[#46797b]/8'
+                                                : 'bg-background'
                                         )}
                                     >
-                                        {m.photo_url ? (
-                                            <img
-                                                src={m.photo_url}
-                                                alt={m.name}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            m.name.charAt(0)
+                                        <div
+                                            className={cn(
+                                                'size-5 shrink-0 rounded-full text-[10px] font-bold flex items-center justify-center overflow-hidden',
+                                                getAvatarTone(m.id, m.name)
+                                            )}
+                                        >
+                                            {m.photo_url ? (
+                                                <img
+                                                    src={m.photo_url}
+                                                    alt={m.name}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                m.name.charAt(0)
+                                            )}
+                                        </div>
+                                        <span className="font-medium text-foreground">{m.name}</span>
+                                        {isLead && (
+                                            <span className="rounded-full bg-[#46797b] px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">
+                                                Lead
+                                            </span>
                                         )}
                                     </div>
-                                    <span className="font-medium text-foreground">{m.name}</span>
-                                    <span className="text-[10px] text-muted-foreground">
-                                        ({m.role_in_project})
-                                    </span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         <button
                             type="button"
                             onClick={() => openCreateTaskModal('todo')}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-xs font-semibold text-background shadow-xs hover:bg-foreground/90"
+                            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg bg-foreground px-4 text-xs font-semibold text-background shadow-xs transition-colors hover:bg-foreground/90 sm:self-center"
                         >
                             <Plus className="size-3.5" />
                             <span>Tambah Tugas Baru</span>
@@ -2085,14 +2238,19 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                 </div>
             )}
 
-            {/* MODAL EDIT PROYEK */}
+            {/* MODAL EDIT PROYEK (Disamakan dengan Buat Proyek Baru) */}
             {isEditProjectModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-                    <div className="relative max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border bg-card p-6 shadow-2xl">
+                    <div className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border bg-card p-6 shadow-2xl">
                         <div className="flex items-start justify-between border-b pb-3">
-                            <h3 className="text-base font-bold text-foreground">
-                                Edit Informasi Proyek
-                            </h3>
+                            <div>
+                                <h3 className="text-base font-bold text-foreground">
+                                    Edit Informasi Proyek
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Perbarui lingkup, paket layanan, jadwal, cover, dan penugasan tim proyek.
+                                </p>
+                            </div>
                             <button
                                 type="button"
                                 onClick={() => setIsEditProjectModalOpen(false)}
@@ -2102,36 +2260,254 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                             </button>
                         </div>
 
-                        <form onSubmit={handleEditProjectSubmit} className="mt-4 flex flex-col gap-3.5">
-                            <div>
-                                <label className="text-xs font-semibold text-foreground">
-                                    Nama Proyek
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={editProjectForm.data.name}
-                                    onChange={(e) => editProjectForm.setData('name', e.target.value)}
-                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
+                        <form onSubmit={handleEditProjectSubmit} className="mt-4 flex flex-col gap-4">
+                            {/* Section 1: Info Dasar & Paket Layanan */}
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="sm:col-span-2">
                                     <label className="text-xs font-semibold text-foreground">
-                                        Klien
+                                        Nama Proyek <span className="text-rose-500">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         required
-                                        value={editProjectForm.data.client_name}
-                                        onChange={(e) => editProjectForm.setData('client_name', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        value={editProjectForm.data.name}
+                                        onChange={(e) => editProjectForm.setData('name', e.target.value)}
+                                        placeholder="cth: Villa Sunset Cliff Jimbaran"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     />
+                                    {editProjectForm.errors.name && (
+                                        <p className="mt-1 text-xs text-rose-500">{editProjectForm.errors.name}</p>
+                                    )}
                                 </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Lingkup Proyek <span className="text-rose-500">*</span>
+                                    </label>
+                                    <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                        {[
+                                            {
+                                                value: 'perencanaan' as const,
+                                                title: 'Perencanaan',
+                                                desc: 'Desain / gambar saja, tanpa fisik lapangan',
+                                            },
+                                            {
+                                                value: 'pembangunan' as const,
+                                                title: 'Pembangunan',
+                                                desc: 'Fisik / kontraktor, dikerjakan tim lapangan',
+                                            },
+                                            {
+                                                value: 'desain_bangun' as const,
+                                                title: 'Desain & Bangun',
+                                                desc: 'Perencanaan dilanjut pembangunan fisik',
+                                            },
+                                        ].map((opt) => {
+                                            const active = editProjectForm.data.project_type === opt.value;
+                                            return (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => editProjectForm.setData('project_type', opt.value)}
+                                                    className={cn(
+                                                        'rounded-lg border p-2.5 text-left transition-colors',
+                                                        active
+                                                            ? 'border-[#46797b] bg-[#46797b]/10 ring-1 ring-[#46797b]'
+                                                            : 'bg-background hover:bg-muted',
+                                                    )}
+                                                >
+                                                    <p className="text-xs font-semibold text-foreground">{opt.title}</p>
+                                                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                                                        {opt.desc}
+                                                    </p>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Proyek Pembangunan &amp; Desain-Bangun akan muncul di pilihan Site Visit karyawan lapangan.
+                                    </p>
+                                </div>
+
+                                {packages.length > 0 && (
+                                    <div className="sm:col-span-2">
+                                        <label className="text-xs font-semibold text-foreground">
+                                            Paket Layanan (Pricelist RIM Projects) <span className="text-rose-500">*</span>
+                                        </label>
+                                        <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {packages.map((pkg) => {
+                                                const active = editProjectForm.data.package_name === pkg.id;
+                                                return (
+                                                    <button
+                                                        key={pkg.id}
+                                                        type="button"
+                                                        onClick={() => handleEditPackageChange(pkg.id)}
+                                                        className={cn(
+                                                            'flex flex-col items-start rounded-xl border p-3 text-left transition-all',
+                                                            active
+                                                                ? 'border-[#46797b] bg-[#46797b]/5 ring-1 ring-[#46797b]'
+                                                                : 'border-border bg-background hover:bg-muted/40'
+                                                        )}
+                                                    >
+                                                        <div className="flex w-full items-center justify-between gap-2">
+                                                            <span className="text-xs font-bold text-foreground">
+                                                                {pkg.name}
+                                                            </span>
+                                                            <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                                                                {pkg.price_per_m2 > 0
+                                                                    ? `Rp ${(pkg.price_per_m2 / 1000).toFixed(0)}.000/m²`
+                                                                    : 'Custom'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="mt-1 text-[11px] text-muted-foreground">
+                                                            {pkg.tagline}
+                                                        </p>
+                                                        {pkg.min_area > 0 && (
+                                                            <span className="mt-1 text-[10px] text-muted-foreground">
+                                                                Min. order {pkg.min_area} m²
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Jenis Bangunan (Menentukan Template Form Data Eksisting Klien) */}
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Jenis Bangunan / Form Data Eksisting Klien <span className="text-rose-500">*</span>
+                                    </label>
+                                    {editProjectForm.data.package_name.toLowerCase().includes('interior') ? (
+                                        <div className="mt-1.5 flex items-center justify-between rounded-lg border border-[#46797b]/40 bg-[#46797b]/10 px-3 py-2 text-xs">
+                                            <span className="font-semibold text-foreground">
+                                                Interior (Otomatis sesuai Paket Interior)
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground">
+                                                Form Klien: Interior Designer Documents
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {[
+                                                {
+                                                    value: 'rumah_hunian' as const,
+                                                    title: 'Rumah Hunian',
+                                                    desc: 'Form data penghuni, ruang Lt. 1–2, gaya hidup & data teknis rumah',
+                                                },
+                                                {
+                                                    value: 'komersial' as const,
+                                                    title: 'Komersial / Bisnis',
+                                                    desc: 'Form profil bisnis, customer, operasional, area usaha & identitas brand',
+                                                },
+                                            ].map((opt) => {
+                                                const active = editProjectForm.data.building_type === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => editProjectForm.setData('building_type', opt.value)}
+                                                        className={cn(
+                                                            'rounded-lg border p-2.5 text-left transition-colors',
+                                                            active
+                                                                ? 'border-[#46797b] bg-[#46797b]/10 ring-1 ring-[#46797b]'
+                                                                : 'bg-background hover:bg-muted',
+                                                        )}
+                                                    >
+                                                        <p className="text-xs font-semibold text-foreground">{opt.title}</p>
+                                                        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                                                            {opt.desc}
+                                                        </p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Add-on & Custom Scope */}
+                                <div className="sm:col-span-2 rounded-xl border bg-muted/20 p-3">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Layanan Tambahan (Add-On) &amp; Custom
+                                    </label>
+                                    {addons.length > 0 && (
+                                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {addons.map((addon) => {
+                                                const checked = editProjectForm.data.package_addons.includes(addon.id);
+                                                return (
+                                                    <label
+                                                        key={addon.id}
+                                                        className={cn(
+                                                            'flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs transition-colors',
+                                                            checked
+                                                                ? 'border-[#46797b] bg-[#46797b]/5 font-medium text-foreground'
+                                                                : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
+                                                        )}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() => toggleEditAddon(addon.id)}
+                                                            className="mt-0.5 rounded border-gray-300 text-[#46797b] focus:ring-[#46797b]"
+                                                        />
+                                                        <span className="leading-snug">{addon.label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-foreground">
+                                                Luas Bangunan (m²)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                value={editProjectForm.data.building_area}
+                                                onChange={(e) => handleEditAreaChange(e.target.value)}
+                                                placeholder="cth: 120"
+                                                className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-foreground">
+                                                Estimasi Nilai Kontrak Desain (Rp)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={editProjectForm.data.estimated_budget}
+                                                onChange={(e) =>
+                                                    editProjectForm.setData('estimated_budget', e.target.value)
+                                                }
+                                                placeholder="Otomatis terhitung atau isi manual"
+                                                className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-2.5">
+                                        <label className="text-[11px] font-semibold text-foreground">
+                                            Catatan Lingkup Custom / Request Khusus Klien (Opsional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editProjectForm.data.custom_scope_notes}
+                                            onChange={(e) =>
+                                                editProjectForm.setData('custom_scope_notes', e.target.value)
+                                            }
+                                            placeholder="cth: Hanya desain fasad + revisi ruang tamu, atau tambahan 3D animasi"
+                                            className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                        />
+                                    </div>
+                                </div>
+
                                 <div>
                                     <label className="text-xs font-semibold text-foreground">
-                                        Status
+                                        Status Proyek <span className="text-rose-500">*</span>
                                     </label>
                                     <select
                                         value={editProjectForm.data.status}
@@ -2141,7 +2517,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                                 e.target.value as ProjectDetailData['status']
                                             )
                                         }
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     >
                                         {statusOptions.map((opt) => (
                                             <option key={opt.value} value={opt.value}>
@@ -2150,57 +2526,50 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                         ))}
                                     </select>
                                 </div>
-                            </div>
 
-                            <div>
-                                <label className="text-xs font-semibold text-foreground">
-                                    Lingkup Proyek
-                                </label>
-                                <select
-                                    value={editProjectForm.data.project_type}
-                                    onChange={(e) =>
-                                        editProjectForm.setData(
-                                            'project_type',
-                                            e.target.value as 'perencanaan' | 'pembangunan' | 'desain_bangun'
-                                        )
-                                    }
-                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
-                                >
-                                    <option value="perencanaan">Perencanaan (Desain Saja)</option>
-                                    <option value="pembangunan">Pembangunan (Fisik Lapangan)</option>
-                                    <option value="desain_bangun">Desain &amp; Bangun</option>
-                                </select>
-                                <p className="mt-1 text-[11px] text-muted-foreground">
-                                    Pembangunan &amp; Desain-Bangun tampil di Site Visit karyawan lapangan.
-                                </p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs font-semibold text-foreground">
-                                        No. Telepon Klien
+                                        Nama Klien <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={editProjectForm.data.client_name}
+                                        onChange={(e) => editProjectForm.setData('client_name', e.target.value)}
+                                        placeholder="cth: Bpk. Hendra Wijaya"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        No. WhatsApp / Telepon Klien
                                     </label>
                                     <input
                                         type="text"
                                         value={editProjectForm.data.client_phone}
                                         onChange={(e) => editProjectForm.setData('client_phone', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        placeholder="cth: 081234567890"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     />
                                 </div>
+
                                 <div>
                                     <label className="text-xs font-semibold text-foreground">
-                                        Lokasi
+                                        Lokasi Lahan / Proyek
                                     </label>
                                     <input
                                         type="text"
                                         value={editProjectForm.data.location}
                                         onChange={(e) => editProjectForm.setData('location', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        placeholder="cth: Bali, Jakarta Selatan, Bandung..."
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            {/* Section 2: Jadwal & Link Drive */}
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div>
                                     <label className="text-xs font-semibold text-foreground">
                                         Tanggal Mulai
@@ -2209,35 +2578,147 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                         type="date"
                                         value={editProjectForm.data.start_date}
                                         onChange={(e) => editProjectForm.setData('start_date', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold text-foreground">
-                                        Target Deadline
+                                        Target Deadline Serah Terima
                                     </label>
                                     <input
                                         type="date"
                                         value={editProjectForm.data.due_date}
                                         onChange={(e) => editProjectForm.setData('due_date', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                    />
+                                    {editProjectForm.errors.due_date && (
+                                        <p className="mt-1 text-xs text-rose-500">{editProjectForm.errors.due_date}</p>
+                                    )}
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Link Folder Google Drive (Asset 3D, CAD, Referensi)
+                                    </label>
+                                    <input
+                                        type="url"
+                                        value={editProjectForm.data.drive_url}
+                                        onChange={(e) => editProjectForm.setData('drive_url', e.target.value)}
+                                        placeholder="https://drive.google.com/drive/folders/..."
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                     />
                                 </div>
                             </div>
 
+                            {/* Section 3: Gambar Cover */}
                             <div>
                                 <label className="text-xs font-semibold text-foreground">
-                                    Link Folder Google Drive
+                                    Gambar Cover / 3D Render
                                 </label>
-                                <input
-                                    type="url"
-                                    value={editProjectForm.data.drive_url}
-                                    onChange={(e) => editProjectForm.setData('drive_url', e.target.value)}
-                                    placeholder="https://drive.google.com/..."
-                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
-                                />
+                                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <img
+                                        src={editCoverPreview}
+                                        alt="Preview"
+                                        className="h-16 w-28 rounded-lg object-cover border shrink-0"
+                                    />
+                                    <div className="flex flex-col gap-2 flex-1">
+                                        <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+                                            <ImagePlus className="size-3.5 text-[#46797b]" />
+                                            <span>Unggah Gambar dari Perangkat</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={async (e) => {
+                                                    const rawFile = e.target.files?.[0];
+                                                    if (!rawFile) return;
+                                                    setEditCoverError(null);
+                                                    const { file, error } = await prepareWebImage(rawFile, {
+                                                        maxWidth: 1600,
+                                                        maxHeight: 1200,
+                                                        maxBytes: 4 * 1024 * 1024,
+                                                    });
+                                                    if (error) {
+                                                        setEditCoverError(error);
+                                                        e.target.value = '';
+                                                        return;
+                                                    }
+                                                    editProjectForm.setData('cover_image', file);
+                                                    setEditCoverPreview(URL.createObjectURL(file));
+                                                }}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Otomatis disesuaikan untuk web (maks. 4 MB). Biarkan kosong untuk mempertahankan cover saat ini.
+                                        </span>
+                                        {editCoverError && (
+                                            <div className="flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">
+                                                <AlertTriangle className="size-3.5 shrink-0" />
+                                                <span>{editCoverError}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
+                            {/* Section 4: Penugasan Tim Proyek */}
+                            <div className="rounded-xl border bg-muted/20 p-3.5">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    Penugasan Tim Proyek
+                                </h4>
+
+                                <div className="mt-2.5">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Lead Architect / PIC Utama
+                                    </label>
+                                    <select
+                                        value={editProjectForm.data.lead_id}
+                                        onChange={(e) => editProjectForm.setData('lead_id', e.target.value)}
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                    >
+                                        <option value="">Pilih Lead Architect / PIC...</option>
+                                        {teamMembers.map((m) => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.name} ({m.position} - {m.employee_code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="mt-3">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Anggota Tim Desain / Lapangan
+                                    </label>
+                                    <div className="mt-1.5 grid max-h-36 grid-cols-1 gap-2 overflow-y-auto rounded-lg border bg-background p-2 sm:grid-cols-2">
+                                        {teamMembers.map((m) => {
+                                            const isChecked = editProjectForm.data.member_ids.includes(m.id);
+                                            return (
+                                                <label
+                                                    key={m.id}
+                                                    className={cn(
+                                                        'flex items-center gap-2 rounded-md p-1.5 text-xs transition cursor-pointer',
+                                                        isChecked
+                                                            ? 'bg-primary/10 text-primary font-semibold'
+                                                            : 'hover:bg-muted text-foreground'
+                                                    )}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => toggleEditMember(m.id)}
+                                                        className="size-3.5 rounded border-muted-foreground/30 text-primary focus:ring-primary"
+                                                    />
+                                                    <span className="truncate">
+                                                        {m.name} ({m.position})
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section 5: Deskripsi */}
                             <div>
                                 <label className="text-xs font-semibold text-foreground">
                                     Deskripsi Proyek
@@ -2246,7 +2727,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                     rows={3}
                                     value={editProjectForm.data.description}
                                     onChange={(e) => editProjectForm.setData('description', e.target.value)}
-                                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-xs focus:border-foreground focus:outline-none"
+                                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
                                 />
                             </div>
 

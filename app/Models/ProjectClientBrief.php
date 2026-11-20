@@ -27,7 +27,8 @@ class ProjectClientBrief extends Model
     }
 
     /**
-     * Get or create the brief form for a project, seeded with the default template.
+     * Get or create the brief form for a project, seeded with the official template
+     * matching the project's building type (Rumah Hunian, Komersial, or Interior).
      */
     public static function forProject(Project $project): self
     {
@@ -36,7 +37,7 @@ class ProjectClientBrief extends Model
             [
                 'token' => Str::random(40),
                 'status' => 'draft',
-                'fields' => ClientBriefTemplate::defaultFields(),
+                'fields' => ClientBriefTemplate::forBuildingType($project->resolvedBuildingType()),
                 'responses' => [],
             ],
         );

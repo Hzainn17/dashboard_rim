@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { router } from '@inertiajs/react';
 import { Construction } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/Components/ui/sheet';
+import { FlashToast } from '@/Components/ui/flash-toast';
 import { adminNav, karyawanNav, type Role } from '@/lib/studio-data';
 import { AttendanceProvider } from './attendance-context';
 import { DashboardOverview } from './dashboard-overview';
@@ -42,10 +43,6 @@ export function AppShell({
             router.visit(route('employees.index'));
             return;
         }
-        if (id === 'karyawan') {
-            router.visit(route('employees.index'));
-            return;
-        }
         if (id === 'presensi-harian' || id === 'presensi-saya') {
             router.visit(route('attendance.index'));
             return;
@@ -60,6 +57,10 @@ export function AppShell({
         }
         if (id === 'projects') {
             router.visit(route('projects.index'));
+            return;
+        }
+        if (id === 'field-projects') {
+            router.visit(route('projects.field'));
             return;
         }
         if (id === 'kalender') {
@@ -113,6 +114,7 @@ export function AppShell({
                     </main>
                 </div>
             </div>
+            <FlashToast />
         </AttendanceProvider>
     );
 }

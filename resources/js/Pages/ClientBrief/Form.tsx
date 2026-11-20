@@ -17,7 +17,9 @@ import {
     type BriefFile,
     type BriefMapsValue,
     type BriefResponses,
+    getDesignStylePreview,
     groupBriefFields,
+    isDesignStyleField,
     isImageUrl,
     mapsEmbedUrl,
     mapsOpenUrl,
@@ -31,6 +33,8 @@ interface Props {
         name: string;
         client_name: string;
         package_name?: string | null;
+        building_type?: 'rumah_hunian' | 'komersial' | 'interior';
+        template_title?: string;
     };
     studioInfo: {
         name: string;
@@ -183,50 +187,60 @@ export default function ClientBriefForm({
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 py-8 px-4">
-            <Head title={`Data Eksisting & Brief Desain — ${project.name}`} />
+        <div className="min-h-screen bg-[#eef2f3] py-8 px-4">
+            <Head title={`${project.template_title || 'Formulir Informasi Klien'} — ${project.name}`} />
 
             <div className="mx-auto max-w-3xl">
-                {/* Studio Header */}
-                <div className="rounded-2xl border bg-white p-6 shadow-xs">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
-                        <div className="flex items-center gap-3">
-                            <img
-                                src={studioInfo.logo_url}
-                                alt={studioInfo.name}
-                                className="h-10 w-auto object-contain"
-                            />
-                            <div>
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#46797b]">
-                                    Form Data Eksisting &amp; Brief Desain
-                                </p>
-                                <h1 className="text-lg font-bold text-slate-900">
-                                    {project.name}
-                                </h1>
+                {/* Architectural Studio Cover Header */}
+                <div className="overflow-hidden rounded-2xl border border-[#d4e2e3] bg-white shadow-sm">
+                    <div className="relative bg-gradient-to-br from-[#1b2a2c] via-[#2f5456] to-[#46797b] px-6 py-6 text-white sm:px-8">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="inline-flex w-fit items-center gap-3 rounded-xl bg-white/95 px-3.5 py-2 shadow-xs">
+                                <img
+                                    src={studioInfo.logo_url}
+                                    alt={studioInfo.name}
+                                    className="h-8 w-auto object-contain"
+                                />
                             </div>
+                            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#d6ecec]">
+                                {project.template_title || 'Formulir Informasi Klien'}
+                            </span>
                         </div>
-                        <div className="text-left sm:text-right text-xs text-slate-500">
+                        <div className="mt-5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#b9dddd]">
+                                {project.building_type === 'interior'
+                                    ? 'INTERIOR DESIGNER DOCUMENTS'
+                                    : 'ARCHITECTURAL DESIGNER DOCUMENTS'}
+                            </p>
+                            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                                {project.name}
+                            </h1>
+                        </div>
+                    </div>
+
+                    <div className="p-6 sm:px-8">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dce8e8] bg-[#f6fafa] px-4 py-3 text-xs text-slate-600">
                             <div>
-                                Klien: <strong className="text-slate-800">{project.client_name}</strong>
+                                Klien: <strong className="text-slate-900">{project.client_name}</strong>
                             </div>
                             {project.package_name && (
                                 <div>
-                                    Paket: <strong className="text-slate-800">{project.package_name}</strong>
+                                    Paket: <strong className="text-[#46797b]">{project.package_name}</strong>
                                 </div>
                             )}
                         </div>
-                    </div>
 
                     <p className="mt-4 text-xs leading-relaxed text-slate-600">
                         Halo Bapak/Ibu <strong>{project.client_name}</strong>, mohon lengkapi data kondisi lahan dan rencana kebutuhan desain berikut sebagai bahan brainstorming tim arsitek kami. Anda dapat memperbarui data ini kapan saja melalui link yang sama.
                     </p>
 
-                    {submittedAt && (
-                        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="size-3.5" />
-                            <span>Terakhir dikirim: {submittedAt}</span>
-                        </div>
-                    )}
+                        {submittedAt && (
+                            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="size-3.5" />
+                                <span>Terakhir dikirim: {submittedAt}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {flashSuccess && (
@@ -325,32 +339,95 @@ export default function ClientBriefForm({
                                             </select>
                                         )}
 
-                                        {field.type === 'multiselect' && (
-                                            <div className="flex flex-wrap gap-2 pt-1">
-                                                {(field.options || []).map((opt) => {
-                                                    const selected =
-                                                        Array.isArray(val) &&
-                                                        (val as string[]).includes(opt);
-                                                    return (
-                                                        <button
-                                                            key={opt}
-                                                            type="button"
-                                                            onClick={() =>
-                                                                toggleMultiOption(field.key, opt)
-                                                            }
-                                                            className={cn(
-                                                                'rounded-full border px-3 py-1.5 text-xs font-medium transition',
-                                                                selected
-                                                                    ? 'border-[#46797b] bg-[#46797b] text-white'
-                                                                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                                                            )}
-                                                        >
-                                                            {opt}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                        {field.type === 'multiselect' &&
+                                            (isDesignStyleField(field) ? (
+                                                <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
+                                                    {(field.options || []).map((opt) => {
+                                                        const selected =
+                                                            Array.isArray(val) &&
+                                                            (val as string[]).includes(opt);
+                                                        const preview = getDesignStylePreview(
+                                                            opt,
+                                                            project.building_type
+                                                        );
+                                                        return (
+                                                            <button
+                                                                key={opt}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    toggleMultiOption(field.key, opt)
+                                                                }
+                                                                className={cn(
+                                                                    'group relative flex flex-col overflow-hidden rounded-xl border text-left transition-all',
+                                                                    selected
+                                                                        ? 'border-[#46797b] bg-[#46797b]/5 ring-2 ring-[#46797b]'
+                                                                        : 'border-slate-200 bg-white hover:border-[#46797b]/50 hover:shadow-xs'
+                                                                )}
+                                                            >
+                                                                {preview ? (
+                                                                    <div className="relative h-28 w-full overflow-hidden bg-slate-100">
+                                                                        <img
+                                                                            src={preview.image}
+                                                                            alt={`Contoh gaya ${opt}`}
+                                                                            loading="lazy"
+                                                                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                                        />
+                                                                        {selected && (
+                                                                            <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#46797b] text-white shadow-sm">
+                                                                                <CheckCircle2 className="size-4" />
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="relative flex h-28 w-full items-center justify-center bg-slate-50 text-xs font-semibold text-slate-400">
+                                                                        Gaya Khusus / Lainnya
+                                                                        {selected && (
+                                                                            <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#46797b] text-white shadow-sm">
+                                                                                <CheckCircle2 className="size-4" />
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <div className="p-2.5">
+                                                                    <p className="text-xs font-bold text-slate-900">
+                                                                        {opt}
+                                                                    </p>
+                                                                    {preview && (
+                                                                        <p className="mt-0.5 text-[10.5px] leading-snug text-slate-500 line-clamp-2">
+                                                                            {preview.subtitle}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-2 pt-1">
+                                                    {(field.options || []).map((opt) => {
+                                                        const selected =
+                                                            Array.isArray(val) &&
+                                                            (val as string[]).includes(opt);
+                                                        return (
+                                                            <button
+                                                                key={opt}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    toggleMultiOption(field.key, opt)
+                                                                }
+                                                                className={cn(
+                                                                    'rounded-full border px-3 py-1.5 text-xs font-medium transition',
+                                                                    selected
+                                                                        ? 'border-[#46797b] bg-[#46797b] text-white'
+                                                                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                                                                )}
+                                                            >
+                                                                {opt}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ))}
 
                                         {field.type === 'compass' && (
                                             <div className="flex flex-col gap-2 pt-1">

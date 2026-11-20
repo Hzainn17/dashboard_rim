@@ -514,4 +514,192 @@ class ProjectManagementTest extends TestCase
                 ->where('projects.0.id', $planningProject->id)
                 ->where('projects.0.project_type', 'desain_bangun'));
     }
+
+    public function test_field_projects_and_planning_projects_pages_are_separated(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $planningOnly = Project::factory()->create(['owner_id' => $admin->id, 'project_type' => 'perencanaan']);
+        $constructionOnly = Project::factory()->construction()->create(['owner_id' => $admin->id]);
+        $designBuild = Project::factory()->create(['owner_id' => $admin->id, 'project_type' => 'desain_bangun']);
+
+        $this->actingAs($admin)
+            ->get(route('projects.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('section', 'planning')
+                ->has('projects', 2));
+
+        $this->actingAs($admin)
+            ->get(route('projects.field'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('section', 'field')
+                ->has('projects', 2));
+
+        $this->assertNotEquals($planningOnly->id, $constructionOnly->id);
+        $this->assertNotEquals($designBuild->id, $constructionOnly->id);
+
+        // Non-admin employees are strictly scoped to their own project management section
+        $fieldEmployee = User::factory()->create();
+        Employee::factory()->field()->create(['user_id' => $fieldEmployee->id]);
+        $officeEmployee = User::factory()->create();
+        Employee::factory()->create(['user_id' => $officeEmployee->id]);
+
+        $this->actingAs($fieldEmployee)
+            ->get(route('projects.index'))
+            ->assertRedirect(route('projects.field'));
+
+        $this->actingAs($fieldEmployee)
+            ->get(route('projects.field'))
+            ->assertOk();
+
+        $this->actingAs($officeEmployee)
+            ->get(route('projects.field'))
+            ->assertRedirect(route('projects.index'));
+
+        $this->actingAs($officeEmployee)
+            ->get(route('projects.index'))
+            ->assertOk();
+    }
+
+    public function test_admin_can_update_project_with_full_creation_fields(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $lead = User::factory()->create();
+        $member = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->post(route('projects.update', $project), [
+                '_method' => 'put',
+                'name' => 'Villa Canggu Renovasi',
+                'client_name' => 'Ibu Sari',
+                'client_phone' => '081999888777',
+                'location' => 'Canggu, Bali',
+                'package_name' => 'Paket 2',
+                'project_type' => 'desain_bangun',
+                'package_addons' => ['interior_3d', 'animasi_3d'],
+                'building_area' => 150,
+                'estimated_budget' => 16500000,
+                'custom_scope_notes' => 'Include kolam renang rooftop',
+                'status' => 'ongoing',
+                'lead_id' => $lead->id,
+                'member_ids' => [$member->id],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $fresh = $project->fresh();
+        $this->assertSame('Villa Canggu Renovasi', $fresh->name);
+        $this->assertSame('Paket 2', $fresh->package_name);
+        $this->assertSame('desain_bangun', $fresh->project_type);
+        $this->assertSame(['interior_3d', 'animasi_3d'], $fresh->package_addons);
+        $this->assertEquals(150, $fresh->building_area);
+        $this->assertSame(16500000, $fresh->estimated_budget);
+        $this->assertSame('Include kolam renang rooftop', $fresh->custom_scope_notes);
+        $this->assertCount(2, $fresh->members);
+    }
+
+    public function test_client_brief_template_adapts_to_building_type_and_interior_package(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // 1. Komersial project gets Komersial brief template
+        $this->actingAs($admin)->post('/projects', [
+            'name' => 'Kafe Kopi Senja',
+            'client_name' => 'Bpk. Rudi',
+            'package_name' => 'Paket 2',
+            'project_type' => 'perencanaan',
+            'building_type' => 'komersial',
+            'status' => 'ongoing',
+        ])->assertRedirect();
+
+        $commercialProject = Project::where('name', 'Kafe Kopi Senja')->firstOrFail();
+        $this->assertSame('komersial', $commercialProject->building_type);
+        $commercialBrief = ProjectClientBrief::forProject($commercialProject);
+        $commercialKeys = collect($commercialBrief->fields)->pluck('key')->all();
+        $this->assertContains('nama_usaha', $commercialKeys);
+        $this->assertContains('target_customer', $commercialKeys);
+        $this->assertContains('karakter_brand', $commercialKeys);
+
+        // 2. Interior package automatically sets building_type = interior and uses Interior template
+        $this->actingAs($admin)->post('/projects', [
+            'name' => 'Interior Apartemen Sudirman',
+            'client_name' => 'Ibu Maya',
+            'package_name' => 'Interior Design Package',
+            'project_type' => 'perencanaan',
+            'building_type' => 'rumah_hunian',
+            'status' => 'ongoing',
+        ])->assertRedirect();
+
+        $interiorProject = Project::where('name', 'Interior Apartemen Sudirman')->firstOrFail();
+        $this->assertSame('interior', $interiorProject->building_type);
+        $interiorBrief = ProjectClientBrief::forProject($interiorProject);
+        $interiorKeys = collect($interiorBrief->fields)->pluck('key')->all();
+        $this->assertContains('jenis_ruangan', $interiorKeys);
+        $this->assertContains('permasalahan_eksisting', $interiorKeys);
+        $this->assertContains('preferensi_storage', $interiorKeys);
+
+        // 3. Admin can switch an existing brief template via apply-template
+        $this->actingAs($admin)
+            ->post(route('projects.brief.apply-template', $commercialProject), [
+                'building_type' => 'rumah_hunian',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('rumah_hunian', $commercialProject->fresh()->building_type);
+        $switchedKeys = collect($commercialBrief->fresh()->fields)->pluck('key')->all();
+        $this->assertContains('ruang_lantai_1', $switchedKeys);
+        $this->assertContains('daftar_penghuni', $switchedKeys);
+    }
+
+    public function test_survey_status_manual_brief_entry_and_printable_pdf_view(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // 1. Admin creates a project starting in 'survey' status
+        $this->actingAs($admin)->post('/projects', [
+            'name' => 'Rumah Survey Dago',
+            'client_name' => 'Bpk. Ahmad',
+            'package_name' => 'Paket 1',
+            'project_type' => 'perencanaan',
+            'building_type' => 'rumah_hunian',
+            'status' => 'survey',
+        ])->assertRedirect();
+
+        $project = Project::where('name', 'Rumah Survey Dago')->firstOrFail();
+        $this->assertSame('survey', $project->status);
+
+        // 2. Admin can download/print blank survey PDF before interview
+        $this->actingAs($admin)
+            ->get(route('projects.brief.print', ['project' => $project->id, 'mode' => 'blank']))
+            ->assertOk()
+            ->assertSee('ARCHITECTURAL')
+            ->assertSee('Rumah Survey Dago')
+            ->assertSee('Blanko Survey');
+
+        // 3. Admin manually inputs survey interview answers
+        $this->actingAs($admin)
+            ->post(route('projects.brief.responses', $project), [
+                'answers' => [
+                    'nama_klien' => 'Bpk. Ahmad Wijaya',
+                    'lokasi_proyek' => 'Dago Pakar, Bandung',
+                    'arah_rumah' => 'Selatan',
+                    'prioritas_utama' => ['Estetika', 'Kenyamanan'],
+                    'catatan_arsitek' => 'Lahan berkontur menghadap lembah.',
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $brief = ProjectClientBrief::forProject($project)->fresh();
+        $this->assertSame('submitted', $brief->status);
+        $this->assertSame('Bpk. Ahmad Wijaya', $brief->responses['nama_klien']);
+        $this->assertSame(['Estetika', 'Kenyamanan'], $brief->responses['prioritas_utama']);
+
+        // 4. Filled PDF view renders the saved answers
+        $this->actingAs($admin)
+            ->get(route('projects.brief.print', ['project' => $project->id, 'mode' => 'filled']))
+            ->assertOk()
+            ->assertSee('Bpk. Ahmad Wijaya')
+            ->assertSee('Lahan berkontur menghadap lembah.');
+    }
 }

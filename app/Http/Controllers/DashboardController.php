@@ -34,10 +34,10 @@ class DashboardController extends Controller
             ->where('mode', 'site_visit')
             ->count();
         $activeProjectsCount = Project::query()
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
             ->count();
         $urgentProjects = Project::query()
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
             ->whereNotNull('due_date')
             ->where('due_date', '<=', Carbon::now()->addDays(7))
             ->orderBy('due_date')
@@ -46,8 +46,13 @@ class DashboardController extends Controller
         $urgentProjectsCount = $urgentProjects->count();
         $urgentProjectNames = $urgentProjects->take(2)->pluck('name')->implode(' · ');
 
+        $userProjectTypes = $user->isFieldWorker()
+            ? Project::FIELD_TYPES
+            : ['perencanaan', 'desain_bangun'];
+
         $myActiveProjects = Project::query()
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
+            ->when(! $user->isAdmin(), fn ($q) => $q->whereIn('project_type', $userProjectTypes))
             ->where(function ($q) use ($user): void {
                 $q->where('owner_id', $user->id)
                     ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));
@@ -93,9 +98,20 @@ class DashboardController extends Controller
             ->whereDate('date', $today)
             ->first();
 
-        $projects = Project::query()
+        $projectsQuery = Project::query()
             ->with(['members:id,name,photo_url', 'stages'])
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review']);
+
+        if (! $user->isAdmin()) {
+            $projectsQuery
+                ->whereIn('project_type', $userProjectTypes)
+                ->where(function ($q) use ($user): void {
+                    $q->where('owner_id', $user->id)
+                        ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));
+                });
+        }
+
+        $projects = $projectsQuery
             ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC')
             ->take(4)
             ->get()
@@ -115,6 +131,7 @@ class DashboardController extends Controller
                     'client_name' => $project->client_name,
                     'location' => $project->location,
                     'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
+                    'project_type' => $project->project_type ?? 'perencanaan',
                     'phase' => $phase,
                     'cover_image_url' => $project->cover_image_url ?: '/project-covers/rumah-tropis.png',
                     'status' => $project->status,

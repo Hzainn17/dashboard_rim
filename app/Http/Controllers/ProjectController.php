@@ -25,9 +25,33 @@ use Inertia\Response;
 class ProjectController extends Controller
 {
     /**
-     * Display a listing of projects (/projects).
+     * Display a listing of planning/design projects (/projects).
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
+    {
+        if (! $request->user()->isAdmin() && $request->user()->isFieldWorker()) {
+            return redirect()->route('projects.field');
+        }
+
+        return $this->renderProjectIndex($request, 'planning');
+    }
+
+    /**
+     * Display a listing of construction/field projects (/field-projects).
+     */
+    public function fieldIndex(Request $request): Response|RedirectResponse
+    {
+        if (! $request->user()->isAdmin() && ! $request->user()->isFieldWorker()) {
+            return redirect()->route('projects.index');
+        }
+
+        return $this->renderProjectIndex($request, 'field');
+    }
+
+    /**
+     * Render the unified project management view scoped to either planning or field.
+     */
+    private function renderProjectIndex(Request $request, string $section): Response
     {
         $user = $request->user();
         $isAdmin = $user->isAdmin();
@@ -37,6 +61,10 @@ class ProjectController extends Controller
         $status = $request->string('status')->trim()->value();
         $projectType = $request->string('type')->trim()->value();
         $tab = $request->input('tab', $isAdmin ? 'all' : 'my');
+
+        $sectionTypes = $section === 'field'
+            ? Project::FIELD_TYPES
+            : ['perencanaan', 'desain_bangun'];
 
         $query = Project::query()
             ->with(['stages', 'members.employee', 'tasks'])
@@ -75,9 +103,13 @@ class ProjectController extends Controller
             $query->whereIn('project_type', Project::FIELD_TYPES);
         } elseif ($projectType && array_key_exists($projectType, Project::TYPES)) {
             $query->where('project_type', $projectType);
+        } else {
+            $query->whereIn('project_type', $sectionTypes);
         }
 
-        $allProjectsForMetrics = Project::query()->get();
+        $allProjectsForMetrics = Project::query()
+            ->whereIn('project_type', $sectionTypes)
+            ->get();
         $today = Carbon::today();
 
         $metrics = [
@@ -102,7 +134,9 @@ class ProjectController extends Controller
 
                 $activeStage = $p->stages->firstWhere('status', 'active') ?? $p->stages->first();
                 $phase = $activeStage ? preg_replace('/^\d+\.\s*/', '', $activeStage->name) : 'Konsep';
-                if ($p->status === 'done') {
+                if ($p->status === 'survey') {
+                    $phase = 'Tahap Survey';
+                } elseif ($p->status === 'done') {
                     $phase = 'Selesai';
                 } elseif ($p->status === 'review' && ! $activeStage) {
                     $phase = 'Asistensi';
@@ -117,6 +151,7 @@ class ProjectController extends Controller
                     'category' => $p->package_name ?: ($p->category ?: 'Paket 1'),
                     'package_name' => $p->package_name ?: ($p->category ?: 'Paket 1'),
                     'project_type' => $p->project_type ?? 'perencanaan',
+                    'building_type' => $p->resolvedBuildingType(),
                     'package_addons' => $p->package_addons ?? [],
                     'building_area' => $p->building_area,
                     'estimated_budget' => $p->estimated_budget,
@@ -165,7 +200,8 @@ class ProjectController extends Controller
                 'members:id,name',
                 'stages' => fn ($q) => $q->orderBy('order'),
             ])
-            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->whereIn('project_type', $sectionTypes)
+            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
             ->orderBy('start_date');
 
         if (! $isAdmin || $tab === 'my') {
@@ -203,6 +239,7 @@ class ProjectController extends Controller
             ->values();
 
         return Inertia::render('Projects/Index', [
+            'section' => $section,
             'projects' => $projects,
             'metrics' => $metrics,
             'filters' => [
@@ -239,6 +276,7 @@ class ProjectController extends Controller
             'category' => ['nullable', 'string', 'max:100'],
             'package_name' => ['nullable', 'string', 'max:100'],
             'project_type' => ['nullable', Rule::in(array_keys(Project::TYPES))],
+            'building_type' => ['nullable', Rule::in(array_keys(Project::BUILDING_TYPES))],
             'package_addons' => ['nullable', 'array'],
             'package_addons.*' => ['string', 'max:150'],
             'building_area' => ['nullable', 'numeric', 'min:0'],
@@ -250,7 +288,7 @@ class ProjectController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'status' => ['required', Rule::in(['planning', 'ongoing', 'review', 'done', 'on_hold'])],
+            'status' => ['required', Rule::in(['survey', 'planning', 'ongoing', 'review', 'done', 'on_hold'])],
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => ['exists:users,id'],
             'lead_id' => ['nullable', 'exists:users,id'],
@@ -283,10 +321,14 @@ class ProjectController extends Controller
             $dir = public_path('uploads/project-covers');
             File::ensureDirectoryExists($dir);
             $file = $request->file('cover_image');
-            $filename = 'cover-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $filename = 'cover-'.Str::random(12).'.'.($file->guessExtension() ?: 'jpg');
             $file->move($dir, $filename);
             $coverImageUrl = "/uploads/project-covers/{$filename}";
         }
+
+        $buildingType = str_contains(strtolower($packageName), 'interior')
+            ? 'interior'
+            : ($validated['building_type'] ?? 'rumah_hunian');
 
         $project = Project::query()->create([
             'name' => $validated['name'],
@@ -296,6 +338,7 @@ class ProjectController extends Controller
             'category' => $packageName,
             'package_name' => $packageName,
             'project_type' => $validated['project_type'] ?? 'perencanaan',
+            'building_type' => $buildingType,
             'package_addons' => $validated['package_addons'] ?? [],
             'building_area' => $validated['building_area'] ?? null,
             'estimated_budget' => $validated['estimated_budget'] ?? null,
@@ -349,6 +392,10 @@ class ProjectController extends Controller
      */
     public function show(Request $request, Project $project): Response
     {
+        if (! $project->isAccessibleBy($request->user())) {
+            abort(403);
+        }
+
         $today = Carbon::today();
 
         $project->load([
@@ -400,6 +447,7 @@ class ProjectController extends Controller
                 'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
                 'package_name' => $project->package_name ?: ($project->category ?: 'Paket 1'),
                 'project_type' => $project->project_type ?? 'perencanaan',
+                'building_type' => $project->resolvedBuildingType(),
                 'package_addons' => $project->package_addons ?? [],
                 'building_area' => $project->building_area,
                 'estimated_budget' => $project->estimated_budget,
@@ -464,7 +512,11 @@ class ProjectController extends Controller
 
                 return [
                     'status' => $brief->status,
+                    'building_type' => $project->resolvedBuildingType(),
+                    'template_title' => ClientBriefTemplate::templateLabels()[$project->resolvedBuildingType()] ?? 'Formulir Informasi Klien',
                     'public_url' => route('brief.show', $brief->token),
+                    'print_url' => route('projects.brief.print', $project->id),
+                    'compass_options' => ClientBriefTemplate::compassOptions(),
                     'fields' => $brief->fields ?? [],
                     'responses' => (object) ($brief->responses ?? []),
                     'sent_at' => $brief->sent_at?->translatedFormat('d M Y, H:i'),
@@ -493,6 +545,7 @@ class ProjectController extends Controller
             'category' => ['nullable', 'string', 'max:100'],
             'package_name' => ['nullable', 'string', 'max:100'],
             'project_type' => ['nullable', Rule::in(array_keys(Project::TYPES))],
+            'building_type' => ['nullable', Rule::in(array_keys(Project::BUILDING_TYPES))],
             'package_addons' => ['nullable', 'array'],
             'package_addons.*' => ['string', 'max:150'],
             'building_area' => ['nullable', 'numeric', 'min:0'],
@@ -504,7 +557,7 @@ class ProjectController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'status' => ['required', Rule::in(['planning', 'ongoing', 'review', 'done', 'on_hold'])],
+            'status' => ['required', Rule::in(['survey', 'planning', 'ongoing', 'review', 'done', 'on_hold'])],
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => ['exists:users,id'],
             'lead_id' => ['nullable', 'exists:users,id'],
@@ -519,10 +572,15 @@ class ProjectController extends Controller
             $dir = public_path('uploads/project-covers');
             File::ensureDirectoryExists($dir);
             $file = $request->file('cover_image');
-            $filename = 'cover-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $filename = 'cover-'.Str::random(12).'.'.($file->guessExtension() ?: 'jpg');
             $file->move($dir, $filename);
             $coverImageUrl = "/uploads/project-covers/{$filename}";
         }
+
+        $oldBuildingType = $project->resolvedBuildingType();
+        $buildingType = str_contains(strtolower($packageName), 'interior')
+            ? 'interior'
+            : ($validated['building_type'] ?? $project->building_type ?? 'rumah_hunian');
 
         $project->update([
             'name' => $validated['name'],
@@ -532,6 +590,7 @@ class ProjectController extends Controller
             'category' => $packageName,
             'package_name' => $packageName,
             'project_type' => $validated['project_type'] ?? $project->project_type ?? 'perencanaan',
+            'building_type' => $buildingType,
             'package_addons' => $validated['package_addons'] ?? $project->package_addons ?? [],
             'building_area' => array_key_exists('building_area', $validated) ? $validated['building_area'] : $project->building_area,
             'estimated_budget' => array_key_exists('estimated_budget', $validated) ? $validated['estimated_budget'] : $project->estimated_budget,
@@ -543,6 +602,15 @@ class ProjectController extends Controller
             'due_date' => $validated['due_date'] ?? null,
             'status' => $validated['status'],
         ]);
+
+        if ($oldBuildingType !== $buildingType) {
+            $brief = $project->clientBrief;
+            if ($brief && $brief->status === 'draft' && empty($brief->responses)) {
+                $brief->update([
+                    'fields' => ClientBriefTemplate::forBuildingType($buildingType),
+                ]);
+            }
+        }
 
         if (isset($validated['member_ids'])) {
             $memberIds = collect($validated['member_ids']);
@@ -865,8 +933,12 @@ class ProjectController extends Controller
     /**
      * Printable official RIM Projects timeline document (/projects/{project}/timeline/print).
      */
-    public function printTimeline(Project $project): View
+    public function printTimeline(Request $request, Project $project): View
     {
+        if (! $project->isAccessibleBy($request->user())) {
+            abort(403);
+        }
+
         $project->load(['stages' => fn ($q) => $q->orderBy('order')]);
         $office = OfficeSetting::current();
 

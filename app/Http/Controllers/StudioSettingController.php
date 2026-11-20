@@ -100,7 +100,7 @@ class StudioSettingController extends Controller
         }
 
         $file = $request->file('logo');
-        $filename = 'company_logo_'.time().'.'.$file->getClientOriginalExtension();
+        $filename = 'company_logo_'.time().'.'.($file->guessExtension() ?: 'png');
         $file->move($dir, $filename);
 
         $setting->update(['company_logo_url' => "/uploads/company/{$filename}"]);
@@ -153,7 +153,7 @@ class StudioSettingController extends Controller
             $dir = public_path('uploads/portfolios');
             File::ensureDirectoryExists($dir);
             $file = $request->file('image');
-            $filename = 'portfolio-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $filename = 'portfolio-'.Str::random(12).'.'.($file->guessExtension() ?: 'jpg');
             $file->move($dir, $filename);
             $imageUrl = "/uploads/portfolios/{$filename}";
         }
@@ -197,7 +197,7 @@ class StudioSettingController extends Controller
             $dir = public_path('uploads/portfolios');
             File::ensureDirectoryExists($dir);
             $file = $request->file('image');
-            $filename = 'portfolio-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $filename = 'portfolio-'.Str::random(12).'.'.($file->guessExtension() ?: 'jpg');
             $file->move($dir, $filename);
             $imageUrl = "/uploads/portfolios/{$filename}";
         }

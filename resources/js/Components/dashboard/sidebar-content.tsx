@@ -30,7 +30,15 @@ export function BrandMark() {
 
 export function SidebarContent({ role, active, onNavigate }: SidebarContentProps) {
     const { auth } = usePage<PageProps>().props;
-    const nav = role === 'admin' ? adminNav : karyawanNav;
+    const isFieldWorker = auth?.workType === 'lapangan';
+    const nav =
+        role === 'admin'
+            ? adminNav
+            : karyawanNav.filter((item) => {
+                  if (isFieldWorker && item.id === 'projects') return false;
+                  if (!isFieldWorker && item.id === 'field-projects') return false;
+                  return true;
+              });
     const displayName = auth?.user?.name || 'Tim Studio';
     const roleLabel =
         auth?.user?.employee?.position ||

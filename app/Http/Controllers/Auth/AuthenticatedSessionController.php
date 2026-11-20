@@ -22,19 +22,7 @@ class AuthenticatedSessionController extends Controller
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
-            'portfolios' => LoginPortfolio::query()
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->get()
-                ->map(fn (LoginPortfolio $p) => [
-                    'id' => $p->id,
-                    'src' => $p->image_url,
-                    'title' => $p->title,
-                    'category' => $p->category ?? 'Arsitektur',
-                    'location' => $p->location ?? 'Indonesia',
-                    'caption' => $p->caption ?? '',
-                ])
-                ->values(),
+            'portfolios' => LoginPortfolio::cachedSlides(),
         ]);
     }
 

@@ -3,6 +3,7 @@ import {
     CalendarDays,
     ClipboardCheck,
     FolderKanban,
+    HardHat,
     LayoutDashboard,
     MapPinCheck,
     Settings,
@@ -23,7 +24,8 @@ export type NavItem = {
 export const adminNav: NavItem[] = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'karyawan', label: 'Data Karyawan', icon: Users },
-    { id: 'projects', label: 'Project Management', icon: FolderKanban },
+    { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
+    { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
     {
         id: 'presensi',
         label: 'Presensi Tim',
@@ -42,7 +44,8 @@ export const adminNav: NavItem[] = [
 export const karyawanNav: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'presensi-harian', label: 'Presensi Harian', icon: MapPinCheck },
-    { id: 'projects', label: 'Project Saya', icon: FolderKanban },
+    { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
+    { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
     { id: 'kalender', label: 'Kalender Tim', icon: CalendarDays },
     { id: 'profil', label: 'Profil Saya', icon: User },
 ];

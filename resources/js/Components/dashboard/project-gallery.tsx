@@ -27,7 +27,7 @@ export interface UnifiedProjectCardData {
     category: string;
     project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun' | null;
     phase?: string;
-    status?: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
+    status?: 'survey' | 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
     cover_image_url?: string | null;
     progress_percent: number;
     days_left?: number | null;
@@ -38,26 +38,22 @@ export interface UnifiedProjectCardData {
 export function ProjectGallery({ role }: { role: Role }) {
     const pageProps = usePage<PageProps & { projects?: UnifiedProjectCardData[] }>().props;
     const dbProjects = pageProps.projects;
-    const authUserId = pageProps.auth?.user?.id;
+    const isFieldWorker = pageProps.auth?.workType === 'lapangan';
 
     const [filter, setFilter] = useState<string>('Semua');
 
-    const normalizedProjects: UnifiedProjectCardData[] = dbProjects ?? [];
-
-    const scopedAll =
-        role === 'admin'
-            ? normalizedProjects
-            : normalizedProjects.filter((p) => {
-                  if (p.members && authUserId) {
-                      return p.members.some((m) => Number(m.id) === Number(authUserId));
-                  }
-                  return false;
-              });
-
-    const scoped = scopedAll.slice(0, 4);
+    const scoped: UnifiedProjectCardData[] = (dbProjects ?? []).slice(0, 4);
 
     const filters = ['Semua', ...Array.from(new Set(scoped.map((p) => p.category).filter(Boolean)))];
     const visible = filter === 'Semua' ? scoped : scoped.filter((p) => p.category === filter);
+
+    const viewAllHref = route(role !== 'admin' && isFieldWorker ? 'projects.field' : 'projects.index');
+    const headingTitle =
+        role === 'admin'
+            ? 'Galeri Proyek Studio'
+            : isFieldWorker
+            ? 'Proyek Lapangan Saya'
+            : 'Proyek Perencanaan Saya';
 
     return (
         <section aria-labelledby="projects-title" className="flex flex-col gap-4">
@@ -65,10 +61,10 @@ export function ProjectGallery({ role }: { role: Role }) {
                 <div>
                     <div className="flex items-center gap-2.5">
                         <h2 id="projects-title" className="text-base font-semibold tracking-tight">
-                            {role === 'admin' ? 'Galeri Proyek Studio' : 'Proyek Saya'}
+                            {headingTitle}
                         </h2>
                         <Link
-                            href={route('projects.index')}
+                            href={viewAllHref}
                             className="inline-flex items-center gap-0.5 text-xs font-semibold text-[#46797b] hover:underline"
                         >
                             <span>Lihat Semua</span>
@@ -79,28 +75,34 @@ export function ProjectGallery({ role }: { role: Role }) {
                         {scoped.length} proyek aktif · diurutkan berdasarkan deadline terdekat
                     </p>
                 </div>
-                <div role="tablist" aria-label="Filter kategori proyek" className="flex gap-1 overflow-x-auto">
-                    {filters.map((f) => (
-                        <button
-                            key={f}
-                            type="button"
-                            role="tab"
-                            aria-selected={filter === f}
-                            onClick={() => setFilter(f)}
-                            className={cn(
-                                'shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                                filter === f ? 'border-foreground bg-foreground text-background' : 'bg-card text-muted-foreground hover:text-foreground',
-                            )}
-                        >
-                            {f}
-                        </button>
-                    ))}
-                </div>
+                {scoped.length > 0 && (
+                    <div role="tablist" aria-label="Filter kategori proyek" className="flex gap-1 overflow-x-auto">
+                        {filters.map((f) => (
+                            <button
+                                key={f}
+                                type="button"
+                                role="tab"
+                                aria-selected={filter === f}
+                                onClick={() => setFilter(f)}
+                                className={cn(
+                                    'shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                                    filter === f ? 'border-foreground bg-foreground text-background' : 'bg-card text-muted-foreground hover:text-foreground',
+                                )}
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {visible.length === 0 ? (
                 <div className="rounded-xl border border-dashed bg-card p-10 text-center text-sm text-muted-foreground">
-                    Tidak ada proyek pada kategori ini.
+                    {scoped.length === 0
+                        ? isFieldWorker && role !== 'admin'
+                            ? 'Belum ada proyek lapangan aktif yang ditugaskan kepada Anda.'
+                            : 'Belum ada proyek aktif yang ditugaskan kepada Anda.'
+                        : 'Tidak ada proyek pada kategori ini.'}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

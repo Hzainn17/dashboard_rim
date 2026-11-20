@@ -18,7 +18,9 @@ Route::get('/', function () {
 });
 
 // Public client brief form (shared to client via WhatsApp link)
-Route::get('/brief/{token}', [ProjectClientBriefController::class, 'show'])->name('brief.show');
+Route::get('/brief/{token}', [ProjectClientBriefController::class, 'show'])
+    ->middleware('throttle:brief-view')
+    ->name('brief.show');
 Route::post('/brief/{token}', [ProjectClientBriefController::class, 'submit'])
     ->middleware('throttle:10,1')
     ->name('brief.submit');
@@ -28,17 +30,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
 
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
-    Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn'])->name('attendance.check-in');
-    Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut'])->name('attendance.check-out');
-    Route::post('/attendance/overtime/start', [AttendanceController::class, 'startOvertime'])->name('attendance.overtime.start');
-    Route::post('/attendance/overtime/{overtime}/stop', [AttendanceController::class, 'stopOvertime'])->name('attendance.overtime.stop');
-    Route::post('/attendance/leave-requests', [AttendanceController::class, 'storeLeaveRequest'])->name('attendance.leave.store');
-    Route::post('/attendance/adjustment', [AttendanceController::class, 'requestAdjustment'])->name('attendance.adjustment');
-    Route::post('/attendance/confirm-checkout', [AttendanceController::class, 'confirmCheckout'])->name('attendance.confirm-checkout');
-    Route::post('/attendance/checkout-and-overtime', [AttendanceController::class, 'checkoutAndOvertime'])->name('attendance.checkout-and-overtime');
+    Route::middleware('throttle:attendance-action')->group(function () {
+        Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn'])->name('attendance.check-in');
+        Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut'])->name('attendance.check-out');
+        Route::post('/attendance/overtime/start', [AttendanceController::class, 'startOvertime'])->name('attendance.overtime.start');
+        Route::post('/attendance/overtime/{overtime}/stop', [AttendanceController::class, 'stopOvertime'])->name('attendance.overtime.stop');
+        Route::post('/attendance/leave-requests', [AttendanceController::class, 'storeLeaveRequest'])->name('attendance.leave.store');
+        Route::post('/attendance/adjustment', [AttendanceController::class, 'requestAdjustment'])->name('attendance.adjustment');
+        Route::post('/attendance/confirm-checkout', [AttendanceController::class, 'confirmCheckout'])->name('attendance.confirm-checkout');
+        Route::post('/attendance/checkout-and-overtime', [AttendanceController::class, 'checkoutAndOvertime'])->name('attendance.checkout-and-overtime');
+    });
 
     // Project Management & Notion-style Kanban
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+    Route::get('/field-projects', [ProjectController::class, 'fieldIndex'])->name('projects.field');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
@@ -58,8 +63,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Client Brief (Data Eksisting Klien)
     Route::put('/projects/{project}/brief', [ProjectClientBriefController::class, 'updateFields'])->name('projects.brief.update');
+    Route::post('/projects/{project}/brief/responses', [ProjectClientBriefController::class, 'updateResponses'])->name('projects.brief.responses');
     Route::post('/projects/{project}/brief/send', [ProjectClientBriefController::class, 'markSent'])->name('projects.brief.send');
     Route::post('/projects/{project}/brief/regenerate', [ProjectClientBriefController::class, 'regenerate'])->name('projects.brief.regenerate');
+    Route::post('/projects/{project}/brief/apply-template', [ProjectClientBriefController::class, 'applyTemplate'])->name('projects.brief.apply-template');
+    Route::get('/projects/{project}/brief/print', [ProjectClientBriefController::class, 'print'])->name('projects.brief.print');
 
     // Studio & Team Calendar
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
@@ -96,7 +104,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Payroll Management
         Route::get('/payroll', [PayrollController::class, 'index'])->name('payroll.index');
-        Route::post('/payroll/generate', [PayrollController::class, 'generate'])->name('payroll.generate');
+        Route::post('/payroll/generate', [PayrollController::class, 'generate'])
+            ->middleware('throttle:payroll-generate')
+            ->name('payroll.generate');
         Route::put('/payroll/items/{item}', [PayrollController::class, 'updateItem'])->name('payroll.items.update');
         Route::patch('/payroll/{payroll}/finalize', [PayrollController::class, 'finalize'])->name('payroll.finalize');
         Route::patch('/payroll/{payroll}/mark-paid', [PayrollController::class, 'markPaid'])->name('payroll.mark-paid');

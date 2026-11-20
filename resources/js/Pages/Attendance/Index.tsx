@@ -88,6 +88,8 @@ type ProjectOption = {
     name: string;
     location?: string | null;
     client_name?: string | null;
+    project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun';
+    group?: 'lapangan' | 'perencanaan';
 };
 
 type OfficeSetting = {
@@ -284,7 +286,7 @@ export default function AttendanceIndex({
         adjustment_type: 'check_in' as 'check_in' | 'check_out' | 'full_day',
         date: todayDate,
         adjusted_check_in_time: '08:00',
-        adjusted_check_out_time: '17:00',
+        adjusted_check_out_time: isFieldWorker ? '16:00' : '17:00',
         notes: '',
     });
 
@@ -292,10 +294,12 @@ export default function AttendanceIndex({
     const defaultPastTargetTime = unclosedPastAttendance?.check_in_at
         ? new Date(
               new Date(unclosedPastAttendance.check_in_at).getTime() +
-                  (unclosedPastAttendance.target_work_minutes || 540) * 60000,
+                  (unclosedPastAttendance.target_work_minutes || targetMinutes) * 60000,
           )
               .toTimeString()
               .slice(0, 5)
+        : isFieldWorker
+        ? '16:00'
         : '17:00';
 
     const confirmCheckoutForm = useForm({
@@ -460,7 +464,13 @@ export default function AttendanceIndex({
                                             : 'bg-secondary text-secondary-foreground',
                                     )}
                                 >
-                                    {weekendSim ? 'Akhir Pekan (Sabtu/Minggu)' : 'Reguler (Senin–Jumat)'}
+                                    {weekendSim
+                                        ? isFieldWorker
+                                            ? 'Hari Libur (Minggu)'
+                                            : 'Akhir Pekan (Sabtu/Minggu)'
+                                        : isFieldWorker
+                                        ? 'Reguler (Senin–Sabtu)'
+                                        : 'Reguler (Senin–Jumat)'}
                                 </button>
                             </div>
                         </div>
@@ -511,7 +521,7 @@ export default function AttendanceIndex({
                                     {todayAttendance.adjustment_status === 'pending' &&
                                         `Menunggu verifikasi Admin di Pusat Approval (Pengajuan masuk: ${todayAttendance.adjusted_check_in_time || '—'}${todayAttendance.adjusted_check_out_time ? `, pulang: ${todayAttendance.adjusted_check_out_time}` : ''})`}
                                     {todayAttendance.adjustment_status === 'approved' &&
-                                        'Pengajuan koreksi jam kerja Anda telah disetujui Admin dan target 9 jam telah disesuaikan.'}
+                                        `Pengajuan koreksi jam kerja Anda telah disetujui Admin dan target ${officeSetting.standard_work_hours} jam telah disesuaikan.`}
                                     {todayAttendance.adjustment_status === 'rejected' &&
                                         'Pengajuan koreksi jam kerja ditolak oleh Admin.'}
                                 </span>
@@ -544,7 +554,8 @@ export default function AttendanceIndex({
                                 <div>
                                     <h2 className="text-sm font-semibold">Status Kehadiran Hari Ini</h2>
                                     <p className="text-xs text-muted-foreground">
-                                        Target kerja {officeSetting.standard_work_hours} jam ({targetMinutes} menit) · Radius kantor {officeSetting.radius_meters}m
+                                        Target kerja {officeSetting.standard_work_hours} jam ({targetMinutes} menit) ·{' '}
+                                        {isFieldWorker ? 'Senin–Sabtu (08:00–16:00 WIB)' : `Senin–Jumat (08:00–17:00 WIB) · Radius kantor ${officeSetting.radius_meters}m`}
                                     </p>
                                 </div>
 
@@ -615,10 +626,14 @@ export default function AttendanceIndex({
                                                     <Sparkles className="mt-0.5 size-4 shrink-0 text-amber-700" />
                                                     <div className="flex-1">
                                                         <p className="text-xs font-semibold text-amber-950">
-                                                            Presensi Akhir Pekan (Sabtu / Minggu) Terdeteksi
+                                                            {isFieldWorker
+                                                                ? 'Presensi Hari Libur (Minggu) Terdeteksi'
+                                                                : 'Presensi Akhir Pekan (Sabtu / Minggu) Terdeteksi'}
                                                         </p>
                                                         <p className="mt-0.5 text-xs text-amber-800">
-                                                            Hari kerja resmi studio adalah Senin–Jumat. Pilih kompensasi kehadiran akhir pekan Anda:
+                                                            {isFieldWorker
+                                                                ? 'Hari kerja resmi karyawan lapangan adalah Senin–Sabtu. Pilih kompensasi kehadiran hari Minggu Anda:'
+                                                                : 'Hari kerja resmi studio adalah Senin–Jumat. Pilih kompensasi kehadiran akhir pekan Anda:'}
                                                         </p>
                                                         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                             <button
@@ -653,7 +668,9 @@ export default function AttendanceIndex({
                                                                     2. Ganti Hari Libur (Auto-Lock)
                                                                 </span>
                                                                 <span className="mt-0.5 text-[11px] text-muted-foreground">
-                                                                    Pilih 1 hari kerja (Senin–Jumat) untuk dikunci otomatis sebagai libur pengganti.
+                                                                    {isFieldWorker
+                                                                        ? 'Pilih 1 hari kerja (Senin–Sabtu) untuk dikunci otomatis sebagai libur pengganti.'
+                                                                        : 'Pilih 1 hari kerja (Senin–Jumat) untuk dikunci otomatis sebagai libur pengganti.'}
                                                                 </span>
                                                             </button>
                                                         </div>
@@ -661,7 +678,9 @@ export default function AttendanceIndex({
                                                         {compensationType === 'day_off_exchange' && (
                                                             <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
                                                                 <label className="text-xs font-medium text-amber-950">
-                                                                    Pilih Tanggal Libur Pengganti (Senin–Jumat):
+                                                                    {isFieldWorker
+                                                                        ? 'Pilih Tanggal Libur Pengganti (Senin–Sabtu):'
+                                                                        : 'Pilih Tanggal Libur Pengganti (Senin–Jumat):'}
                                                                 </label>
                                                                 <input
                                                                     type="date"
@@ -950,7 +969,9 @@ export default function AttendanceIndex({
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <span className="text-muted-foreground">Target Pulang (+9j)</span>
+                                                    <span className="text-muted-foreground">
+                                                        Target Pulang (+{officeSetting.standard_work_hours}j)
+                                                    </span>
                                                     <p className="font-mono font-medium">
                                                         {targetEndDate
                                                             ? targetEndDate.toTimeString().slice(0, 5)
@@ -1006,8 +1027,8 @@ export default function AttendanceIndex({
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => confirmCheckOut(540)}
-                                                        title="Simulasikan selesai kerja 9 jam penuh (540 menit)"
+                                                        onClick={() => confirmCheckOut(targetMinutes)}
+                                                        title={`Simulasikan selesai kerja ${officeSetting.standard_work_hours} jam penuh (${targetMinutes} menit)`}
                                                         className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-success/15 px-3 text-xs font-medium text-success transition-colors hover:bg-success/25"
                                                     >
                                                         <CheckCircle2 className="size-3.5" />
@@ -1196,11 +1217,44 @@ export default function AttendanceIndex({
                                                 }
                                                 className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                {projects.map((p) => (
-                                                    <option key={p.id} value={p.id}>
-                                                        {p.name}
+                                                {projects.length === 0 ? (
+                                                    <option value="">
+                                                        {isFieldWorker
+                                                            ? 'Belum ada proyek Lapangan aktif'
+                                                            : 'Belum ada proyek Perencanaan aktif'}
                                                     </option>
-                                                ))}
+                                                ) : auth?.user?.role === 'admin' ? (
+                                                    <>
+                                                        {projects.some((p) => p.group === 'lapangan') && (
+                                                            <optgroup label="Proyek Lapangan (Pembangunan)">
+                                                                {projects
+                                                                    .filter((p) => p.group === 'lapangan')
+                                                                    .map((p) => (
+                                                                        <option key={p.id} value={p.id}>
+                                                                            {p.name}
+                                                                        </option>
+                                                                    ))}
+                                                            </optgroup>
+                                                        )}
+                                                        {projects.some((p) => p.group !== 'lapangan') && (
+                                                            <optgroup label="Proyek Perencanaan">
+                                                                {projects
+                                                                    .filter((p) => p.group !== 'lapangan')
+                                                                    .map((p) => (
+                                                                        <option key={p.id} value={p.id}>
+                                                                            {p.name}
+                                                                        </option>
+                                                                    ))}
+                                                            </optgroup>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    projects.map((p) => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name}
+                                                        </option>
+                                                    ))
+                                                )}
                                             </select>
                                         </div>
 
@@ -1540,7 +1594,7 @@ export default function AttendanceIndex({
                                         <strong className="text-foreground">
                                             {formatMinutes(elapsedMinutes)}
                                         </strong>{' '}
-                                        dari target 9 jam (540 menit). Checkout sekarang akan mencatat kekurangan{' '}
+                                        dari target {officeSetting.standard_work_hours} jam ({targetMinutes} menit). Checkout sekarang akan mencatat kekurangan{' '}
                                         <strong className="text-amber-700">
                                             {Math.max(0, targetMinutes - elapsedMinutes)} menit
                                         </strong>{' '}
@@ -1800,10 +1854,10 @@ export default function AttendanceIndex({
                             <div className="mt-3 rounded-lg bg-muted/60 p-3 text-xs leading-relaxed">
                                 <ul className="space-y-1">
                                     <li>
-                                        • <strong>9 Jam Kerja Reguler:</strong> Diselesaikan otomatis (0 mnt kurang jam)
+                                        • <strong>{officeSetting.standard_work_hours} Jam Kerja Reguler:</strong> Diselesaikan otomatis (0 mnt kurang jam)
                                     </li>
                                     <li>
-                                        • <strong>Jeda Istirahat 1 Jam:</strong> Dihitung otomatis setelah target 9 jam
+                                        • <strong>Jeda Istirahat:</strong> Dihitung otomatis setelah target {officeSetting.standard_work_hours} jam
                                     </li>
                                     <li>
                                         • <strong>Sesi Lembur Malam:</strong> Langsung aktif berjalan tanpa tunggu lagi
@@ -1824,11 +1878,44 @@ export default function AttendanceIndex({
                                         }
                                         className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
                                     >
-                                        {projects.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                                {p.name}
+                                        {projects.length === 0 ? (
+                                            <option value="">
+                                                {isFieldWorker
+                                                    ? 'Belum ada proyek Lapangan aktif'
+                                                    : 'Belum ada proyek Perencanaan aktif'}
                                             </option>
-                                        ))}
+                                        ) : auth?.user?.role === 'admin' ? (
+                                            <>
+                                                {projects.some((p) => p.group === 'lapangan') && (
+                                                    <optgroup label="Proyek Lapangan (Pembangunan)">
+                                                        {projects
+                                                            .filter((p) => p.group === 'lapangan')
+                                                            .map((p) => (
+                                                                <option key={p.id} value={p.id}>
+                                                                    {p.name}
+                                                                </option>
+                                                            ))}
+                                                    </optgroup>
+                                                )}
+                                                {projects.some((p) => p.group !== 'lapangan') && (
+                                                    <optgroup label="Proyek Perencanaan">
+                                                        {projects
+                                                            .filter((p) => p.group !== 'lapangan')
+                                                            .map((p) => (
+                                                                <option key={p.id} value={p.id}>
+                                                                    {p.name}
+                                                                </option>
+                                                            ))}
+                                                    </optgroup>
+                                                )}
+                                            </>
+                                        ) : (
+                                            projects.map((p) => (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.name}
+                                                </option>
+                                            ))
+                                        )}
                                     </select>
                                 </div>
 

@@ -21,6 +21,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_employee_can_check_in_and_check_out_with_shortage_calculation(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-11-20 08:00:00'));
         OfficeSetting::current();
         $user = User::factory()->create();
 
@@ -59,6 +60,7 @@ class AttendanceModuleTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame(1, Attendance::query()->where('user_id', $user->id)->count());
+        Carbon::setTestNow();
     }
 
     public function test_check_in_is_blocked_when_day_is_auto_locked_ganti_hari(): void
@@ -563,6 +565,8 @@ class AttendanceModuleTest extends TestCase
                 ->has('siteVisitProjects', 1)
                 ->where('siteVisitProjects.0.id', $constructionProject->id)
                 ->where('siteVisitProjects.0.group', 'lapangan')
+                ->has('projects', 1)
+                ->where('projects.0.id', $constructionProject->id)
                 ->where('auth.workType', 'lapangan'));
 
         $this->actingAs($officeEmployee)
@@ -571,7 +575,9 @@ class AttendanceModuleTest extends TestCase
                 ->has('siteVisitProjects', 2)
                 ->where('siteVisitProjects.0.id', $constructionProject->id)
                 ->where('siteVisitProjects.1.id', $planningProject->id)
-                ->where('siteVisitProjects.1.group', 'perencanaan'));
+                ->where('siteVisitProjects.1.group', 'perencanaan')
+                ->has('projects', 1)
+                ->where('projects.0.id', $planningProject->id));
     }
 
     public function test_field_employee_cannot_site_visit_a_planning_only_project(): void
@@ -604,5 +610,68 @@ class AttendanceModuleTest extends TestCase
             'user_id' => $fieldEmployee->id,
             'site_visit_project_id' => $constructionProject->id,
         ]);
+    }
+
+    public function test_field_employee_has_8_hour_target_and_saturday_is_a_working_day(): void
+    {
+        OfficeSetting::current();
+        $fieldEmployee = User::factory()->create();
+        Employee::factory()->field()->create(['user_id' => $fieldEmployee->id]);
+        $officeEmployee = User::factory()->create();
+        Employee::factory()->create(['user_id' => $officeEmployee->id]);
+        $constructionProject = Project::factory()->construction()->create();
+
+        // Saturday: working day for field worker (8 hours = 480m), weekend for office worker (9 hours = 540m)
+        Carbon::setTestNow(Carbon::parse('2026-11-21 08:00:00'));
+
+        $this->actingAs($fieldEmployee)
+            ->get('/attendance')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('isWeekendToday', false)
+                ->where('officeSetting.standard_work_hours', 8)
+                ->where('auth.targetWorkHours', 8)
+                ->where('auth.targetWorkMinutes', 480));
+
+        $this->actingAs($fieldEmployee)
+            ->post('/attendance/check-in', [
+                'mode' => 'site_visit',
+                'site_visit_project_id' => $constructionProject->id,
+                'site_visit_photo' => UploadedFile::fake()->image('site.jpg'),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $fieldEmployee->id,
+            'target_work_minutes' => 480,
+            'is_weekend' => false,
+        ]);
+
+        // Field worker checks out after 8 hours -> zero shortage
+        $this->actingAs($fieldEmployee)
+            ->post('/attendance/check-out', ['simulated_minutes' => 480])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $fieldEmployee->id,
+            'actual_work_minutes' => 480,
+            'shortage_minutes' => 0,
+        ]);
+
+        // Office worker on Saturday is treated as weekend
+        $this->actingAs($officeEmployee)
+            ->get('/attendance')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('isWeekendToday', true)
+                ->where('officeSetting.standard_work_hours', 9));
+
+        // Sunday is off-day for field worker too
+        Carbon::setTestNow(Carbon::parse('2026-11-22 08:00:00'));
+
+        $this->actingAs($fieldEmployee)
+            ->get('/attendance')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('isWeekendToday', true));
+
+        Carbon::setTestNow();
     }
 }

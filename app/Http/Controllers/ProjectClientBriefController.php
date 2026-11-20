@@ -7,6 +7,7 @@ use App\Models\OfficeSetting;
 use App\Models\Project;
 use App\Models\ProjectClientBrief;
 use App\Services\ClientBriefTemplate;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -90,12 +91,100 @@ class ProjectClientBriefController extends Controller
     }
 
     /**
+     * Apply one of the 3 official brief templates (Rumah Hunian / Komersial / Interior).
+     */
+    public function applyTemplate(Request $request, Project $project): RedirectResponse
+    {
+        $this->authorizeManage($request, $project);
+
+        $validated = $request->validate([
+            'building_type' => ['required', Rule::in(array_keys(Project::BUILDING_TYPES))],
+        ]);
+
+        $templateType = $validated['building_type'];
+
+        $project->update(['building_type' => $templateType]);
+        ProjectClientBrief::forProject($project)->update([
+            'fields' => ClientBriefTemplate::forBuildingType($templateType),
+        ]);
+
+        $label = Project::BUILDING_TYPES[$templateType] ?? $templateType;
+
+        return redirect()->back()->with('success', "Template formulir berhasil diganti ke {$label}.");
+    }
+
+    /**
+     * Allow Admin / Lead Architect to manually fill or edit brief responses
+     * (e.g. from field survey interviews before/after dealing).
+     */
+    public function updateResponses(Request $request, Project $project): RedirectResponse
+    {
+        $this->authorizeManage($request, $project);
+
+        $brief = ProjectClientBrief::forProject($project);
+        $this->saveBriefResponses($request, $brief, false);
+
+        ActivityLog::record(
+            action: 'project.brief_updated',
+            description: "{$request->user()->name} mengisi/memperbarui data eksisting proyek {$project->name}",
+            reference: $project,
+            user: $request->user(),
+        );
+
+        return redirect()->back()->with('success', 'Data eksisting / hasil survey berhasil disimpan.');
+    }
+
+    /**
+     * Studio-branded A4 printable PDF view of the Client Brief (blank survey form or filled answers).
+     */
+    public function print(Request $request, Project $project): View
+    {
+        if (! $project->isAccessibleBy($request->user())) {
+            abort(403);
+        }
+
+        $brief = ProjectClientBrief::forProject($project);
+        $office = OfficeSetting::current();
+        $buildingType = $project->resolvedBuildingType();
+        $templateLabels = ClientBriefTemplate::templateLabels();
+        $hasResponses = ! empty(array_filter((array) ($brief->responses ?? []), fn ($v) => $v !== null && $v !== '' && $v !== []));
+        $mode = $request->query('mode', $hasResponses ? 'filled' : 'blank');
+        if (! in_array($mode, ['blank', 'filled'], true)) {
+            $mode = 'blank';
+        }
+
+        $sections = [];
+        foreach (($brief->fields ?? []) as $field) {
+            $sec = $field['section'] ?? 'Umum';
+            if (! isset($sections[$sec])) {
+                $sections[$sec] = [];
+            }
+            $sections[$sec][] = $field;
+        }
+
+        return view('projects.brief-print', [
+            'project' => $project,
+            'brief' => $brief,
+            'office' => $office,
+            'buildingType' => $buildingType,
+            'templateTitle' => $templateLabels[$buildingType] ?? 'Formulir Informasi Klien',
+            'sections' => $sections,
+            'responses' => $mode === 'filled' ? ($brief->responses ?? []) : [],
+            'mode' => $mode,
+            'hasResponses' => $hasResponses,
+            'isInterior' => $buildingType === 'interior',
+        ]);
+    }
+
+    /**
      * Public client-facing brief form (/brief/{token}).
      */
     public function show(string $token): Response
     {
         $brief = ProjectClientBrief::query()->with('project')->where('token', $token)->firstOrFail();
         $office = OfficeSetting::current();
+        $buildingType = $brief->project->resolvedBuildingType();
+        $templateLabels = ClientBriefTemplate::templateLabels();
 
         return Inertia::render('ClientBrief/Form', [
             'token' => $brief->token,
@@ -103,6 +192,8 @@ class ProjectClientBriefController extends Controller
                 'name' => $brief->project->name,
                 'client_name' => $brief->project->client_name,
                 'package_name' => $brief->project->package_name ?: $brief->project->category,
+                'building_type' => $buildingType,
+                'template_title' => $templateLabels[$buildingType] ?? 'Formulir Informasi Klien',
             ],
             'studioInfo' => [
                 'name' => $office->office_name ?: config('app.name'),
@@ -121,13 +212,32 @@ class ProjectClientBriefController extends Controller
     public function submit(Request $request, string $token): RedirectResponse
     {
         $brief = ProjectClientBrief::query()->with('project')->where('token', $token)->firstOrFail();
+        $isFirstSubmission = $brief->submitted_at === null;
+
+        $this->saveBriefResponses($request, $brief, true);
+
+        ActivityLog::record(
+            action: 'project.brief_submitted',
+            description: "Klien {$brief->project->client_name} ".($isFirstSubmission ? 'mengisi' : 'memperbarui')." data eksisting proyek {$brief->project->name}",
+            reference: $brief->project,
+            user: $brief->project->owner,
+        );
+
+        return redirect()->back()->with('success', 'Terima kasih! Data Anda berhasil dikirim ke tim arsitek RIM.');
+    }
+
+    /**
+     * Validate and persist brief answers + uploaded files.
+     */
+    private function saveBriefResponses(Request $request, ProjectClientBrief $brief, bool $strictRequired): void
+    {
         $fields = collect($brief->fields ?? []);
         $previous = $brief->responses ?? [];
 
         $rules = [];
         foreach ($fields as $field) {
             $key = $field['key'];
-            $required = (bool) ($field['required'] ?? false);
+            $required = $strictRequired && (bool) ($field['required'] ?? false);
             $base = "answers.{$key}";
 
             switch ($field['type']) {
@@ -176,7 +286,6 @@ class ProjectClientBriefController extends Controller
                     ->filter(fn (array $file) => in_array($file['url'], (array) $request->input("existing.{$key}", []), true))
                     ->values();
 
-                // Remove files the client deleted
                 foreach (array_diff($previousUrls, $kept->pluck('url')->all()) as $removedUrl) {
                     $path = public_path(ltrim($removedUrl, '/'));
                     if (File::exists($path)) {
@@ -188,7 +297,7 @@ class ProjectClientBriefController extends Controller
                 $uploads = $request->file("files.{$key}", []);
                 foreach ($uploads as $upload) {
                     File::ensureDirectoryExists($uploadDir);
-                    $filename = $key.'-'.Str::random(10).'.'.$upload->getClientOriginalExtension();
+                    $filename = $key.'-'.Str::random(12).'.'.($upload->guessExtension() ?: 'jpg');
                     $upload->move($uploadDir, $filename);
                     $kept->push([
                         'url' => "/uploads/client-briefs/{$brief->id}/{$filename}",
@@ -204,22 +313,11 @@ class ProjectClientBriefController extends Controller
             $responses[$key] = $request->input("answers.{$key}");
         }
 
-        $isFirstSubmission = $brief->submitted_at === null;
-
         $brief->update([
             'responses' => $responses,
             'status' => 'submitted',
             'submitted_at' => now(),
         ]);
-
-        ActivityLog::record(
-            action: 'project.brief_submitted',
-            description: "Klien {$brief->project->client_name} ".($isFirstSubmission ? 'mengisi' : 'memperbarui')." data eksisting proyek {$brief->project->name}",
-            reference: $brief->project,
-            user: $brief->project->owner,
-        );
-
-        return redirect()->back()->with('success', 'Terima kasih! Data Anda berhasil dikirim ke tim arsitek RIM.');
     }
 
     private function authorizeManage(Request $request, Project $project): void

@@ -125,7 +125,7 @@ class HandleInertiaRequests extends Middleware
                     'check_out_at' => $todayAtt->check_out_at?->toIso8601String(),
                     'elapsed_seconds' => $elapsedSeconds,
                     'cooldown_remaining_seconds' => $cooldownRemainingSeconds,
-                    'target_work_minutes' => $todayAtt->target_work_minutes ?: 540,
+                    'target_work_minutes' => $todayAtt->target_work_minutes ?: ($user?->dailyTargetWorkMinutes() ?? 540),
                     'site_visit_project_id' => $todayAtt->site_visit_project_id,
                     'site_visit_photo_url' => $todayAtt->site_visit_photo_url,
                     'notes' => $todayAtt->notes,
@@ -151,14 +151,16 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
                 'hasLeaveToday' => $hasLeaveToday,
                 'workType' => $user?->employee?->work_type ?? 'kantor',
+                'targetWorkHours' => $user ? $user->dailyTargetWorkHours() : 9,
+                'targetWorkMinutes' => $user ? $user->dailyTargetWorkMinutes() : 540,
                 'unclosedPastAttendance' => $unclosedPastAtt ? [
                     'id' => $unclosedPastAtt->id,
                     'date' => $unclosedPastAtt->date->format('Y-m-d'),
                     'date_formatted' => $unclosedPastAtt->date->format('d M Y'),
                     'check_in_time' => $unclosedPastAtt->check_in_at?->format('H:i'),
                     'target_time' => $unclosedPastAtt->check_in_at
-                        ? $unclosedPastAtt->check_in_at->copy()->addMinutes($unclosedPastAtt->target_work_minutes ?: 540)->format('H:i')
-                        : '17:00',
+                        ? $unclosedPastAtt->check_in_at->copy()->addMinutes($unclosedPastAtt->target_work_minutes ?: ($user?->dailyTargetWorkMinutes() ?? 540))->format('H:i')
+                        : ($user?->isFieldWorker() ? '16:00' : '17:00'),
                 ] : null,
             ],
             'notifications' => $user ? $this->buildNotifications($user) : [],

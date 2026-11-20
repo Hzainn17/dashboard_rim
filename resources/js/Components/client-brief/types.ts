@@ -99,3 +99,130 @@ export function mapsOpenUrl(value?: BriefMapsValue | null): string | null {
 export function isImageUrl(url: string): boolean {
     return /\.(jpe?g|png|webp|gif|heic)$/i.test(url);
 }
+
+export interface DesignStylePreview {
+    image: string;
+    subtitle: string;
+}
+
+const DESIGN_STYLE_MAP: Record<string, DesignStylePreview> = {
+    modern: {
+        image: '/design-styles/modern.jpg',
+        subtitle: 'Garis tegas, bukaan kaca lebar, fungsional',
+    },
+    'modern minimalis': {
+        image: '/design-styles/modern.jpg',
+        subtitle: 'Garis bersih, simpel & proporsional',
+    },
+    tropical: {
+        image: '/design-styles/tropical.jpg',
+        subtitle: 'Material alami, ventilasi silang & teduh',
+    },
+    'tropis modern': {
+        image: '/design-styles/tropical.jpg',
+        subtitle: 'Material alami, ventilasi silang & teduh',
+    },
+    japandi: {
+        image: '/design-styles/japandi.jpg',
+        subtitle: 'Hangat kayu natural, tenang & rapi',
+    },
+    scandinavian: {
+        image: '/design-styles/scandinavian.jpg',
+        subtitle: 'Terang, warna netral & nyaman',
+    },
+    skandinavia: {
+        image: '/design-styles/scandinavian.jpg',
+        subtitle: 'Terang, warna netral & nyaman',
+    },
+    'american classic': {
+        image: '/design-styles/american-classic.jpg',
+        subtitle: 'Simetris, profil lis elegan & timeless',
+    },
+    'klasik / kolonial': {
+        image: '/design-styles/american-classic.jpg',
+        subtitle: 'Simetris, pilar elegan & timeless',
+    },
+    mediterranean: {
+        image: '/design-styles/mediterranean.jpg',
+        subtitle: 'Lengkung artistik, tekstur hangat & terakota',
+    },
+    mediterania: {
+        image: '/design-styles/mediterranean.jpg',
+        subtitle: 'Lengkung artistik, tekstur hangat & terakota',
+    },
+    industrial: {
+        image: '/design-styles/industrial.jpg',
+        subtitle: 'Bata ekspos, baja hitam & beton raw',
+    },
+    minimalist: {
+        image: '/design-styles/modern.jpg',
+        subtitle: 'Bentuk geometris murni & lapang',
+    },
+    minimalis: {
+        image: '/design-styles/modern.jpg',
+        subtitle: 'Bentuk geometris murni & lapang',
+    },
+    luxury: {
+        image: '/design-styles/kontemporer.jpg',
+        subtitle: 'Megah, kontemporer & aksen elegan',
+    },
+    kontemporer: {
+        image: '/design-styles/kontemporer.jpg',
+        subtitle: 'Dinamis, kekinian & inovatif',
+    },
+};
+
+const COMMERCIAL_SUBTITLES: Record<string, string> = {
+    'modern minimalis': 'Fasad bersih, pencahayaan modern & tampilan brand profesional',
+    modern: 'Fasad bersih, pencahayaan modern & tampilan brand profesional',
+    industrial: 'Bata ekspos, rangka baja hitam & nuansa kafe/studio urban',
+    'tropis modern': 'Semi-outdoor teduh, tanaman hijau & sirkulasi nyaman',
+    tropical: 'Semi-outdoor teduh, tanaman hijau & sirkulasi nyaman',
+    japandi: 'Hangat kayu natural, tenang & estetik untuk hospitality',
+    skandinavia: 'Terang, ramah pengunjung & tata ruang fungsional',
+    scandinavian: 'Terang, ramah pengunjung & tata ruang fungsional',
+    mediterania: 'Lengkung artistik, warna hangat & spot foto ikonik',
+    mediterranean: 'Lengkung artistik, warna hangat & spot foto ikonik',
+    'american classic': 'Fasad simetris, elegan & berkelas untuk butik/kantor',
+    kontemporer: 'Bold, kekinian, ikonik & menonjolkan karakter brand',
+    luxury: 'Megah, eksklusif, aksen marmer & pencahayaan dramatis',
+};
+
+const INTERIOR_SUBTITLES: Record<string, string> = {
+    japandi: 'Kayu oak terang, earth-tone, rapi & menenangkan',
+    'modern minimalis': 'Furniture sleek, clean lines & built-in storage fungsional',
+    modern: 'Furniture sleek, clean lines & built-in storage fungsional',
+    skandinavia: 'Cerah, cozy, tekstur kain natural & cahaya lembut',
+    scandinavian: 'Cerah, cozy, tekstur kain natural & cahaya lembut',
+    industrial: 'Aksen besi hitam, semen ekspos & ambient light hangat',
+    'tropis modern': 'Rotan/kayu alami, bukaan segar & nuansa resort',
+    tropical: 'Rotan/kayu alami, bukaan segar & nuansa resort',
+    'american classic': 'Wall moulding elegan, panel simetris & hangat berkelas',
+    mediterania: 'Archway lembut, tekstur plester hangat & aksen terakota',
+    mediterranean: 'Archway lembut, tekstur plester hangat & aksen terakota',
+    kontemporer: 'Perpaduan material modern, aksen marmer & lighting dramatis',
+    luxury: 'Material premium, aksen brass/marmer & ambience mewah',
+};
+
+export function getDesignStylePreview(
+    option: string,
+    buildingType?: 'rumah_hunian' | 'komersial' | 'interior',
+): DesignStylePreview | null {
+    const key = option.trim().toLowerCase();
+    const base = DESIGN_STYLE_MAP[key];
+    if (!base) return null;
+
+    if (buildingType === 'komersial' && COMMERCIAL_SUBTITLES[key]) {
+        return { ...base, subtitle: COMMERCIAL_SUBTITLES[key] };
+    }
+    if (buildingType === 'interior' && INTERIOR_SUBTITLES[key]) {
+        return { ...base, subtitle: INTERIOR_SUBTITLES[key] };
+    }
+
+    return base;
+}
+
+export function isDesignStyleField(field: BriefField): boolean {
+    if (field.type !== 'multiselect') return false;
+    return ['gaya_desain', 'gaya_konsep', 'design_style'].includes(field.key);
+}

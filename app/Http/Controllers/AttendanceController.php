@@ -14,6 +14,7 @@ use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -88,11 +89,31 @@ class AttendanceController extends Controller
             ->whereYear('start_date', $today->year)
             ->sum('total_days');
 
-        $projects = Project::query()
+        $projectsQuery = Project::query()
             ->whereIn('status', ['planning', 'ongoing', 'review'])
-            ->select(['id', 'name', 'location', 'client_name'])
+            ->select(['id', 'name', 'location', 'client_name', 'project_type']);
+
+        if (! $user->isAdmin()) {
+            if ($user->isFieldWorker()) {
+                $projectsQuery->whereIn('project_type', Project::FIELD_TYPES);
+            } else {
+                $projectsQuery->whereIn('project_type', ['perencanaan', 'desain_bangun']);
+            }
+        }
+
+        $projects = $projectsQuery
+            ->orderByRaw("CASE WHEN project_type IN ('pembangunan', 'desain_bangun') THEN 0 ELSE 1 END")
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(fn (Project $p): array => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'location' => $p->location,
+                'client_name' => $p->client_name,
+                'project_type' => $p->project_type ?? 'perencanaan',
+                'group' => $p->hasFieldSite() ? 'lapangan' : 'perencanaan',
+            ])
+            ->values();
 
         return Inertia::render('Attendance/Index', [
             'todayAttendance' => $todayAttendance ? $this->formatAttendance($todayAttendance) : null,
@@ -119,10 +140,10 @@ class AttendanceController extends Controller
                 'latitude' => (float) $officeSetting->latitude,
                 'longitude' => (float) $officeSetting->longitude,
                 'radius_meters' => $officeSetting->radius_meters,
-                'standard_work_hours' => $officeSetting->standard_work_hours,
+                'standard_work_hours' => $user->dailyTargetWorkHours(),
                 'overtime_cooldown_minutes' => $officeSetting->overtime_cooldown_minutes,
             ],
-            'isWeekendToday' => $today->isWeekend(),
+            'isWeekendToday' => $user->isOffDay($today),
             'todayDate' => $today->format('Y-m-d'),
         ]);
     }
@@ -196,7 +217,7 @@ class AttendanceController extends Controller
             );
         }
 
-        $isWeekend = $today->isWeekend() || $request->boolean('is_weekend');
+        $isWeekend = $user->isOffDay($today) || $request->boolean('is_weekend');
         $compensationType = $isWeekend ? ($validated['compensation_type'] ?? 'overtime') : 'none';
 
         $siteVisitPhotoUrl = null;
@@ -206,7 +227,7 @@ class AttendanceController extends Controller
                 File::makeDirectory($dir, 0755, true);
             }
             $file = $request->file('site_visit_photo');
-            $ext = $file->getClientOriginalExtension() ?: 'jpg';
+            $ext = $file->guessExtension() ?: 'jpg';
             $filename = 'site_visit_'.$user->id.'_'.$today->format('Ymd').'_'.time().'.'.$ext;
             $file->move($dir, $filename);
             $siteVisitPhotoUrl = "/uploads/site-visits/{$filename}";
@@ -223,7 +244,7 @@ class AttendanceController extends Controller
             'check_in_lat' => $validated['latitude'] ?? $officeSetting->latitude,
             'check_in_lng' => $validated['longitude'] ?? $officeSetting->longitude,
             'check_in_distance_meters' => $validated['mode'] === 'office' ? $distance : null,
-            'target_work_minutes' => $officeSetting->standard_work_hours * 60,
+            'target_work_minutes' => $user->dailyTargetWorkMinutes(),
             'actual_work_minutes' => null,
             'shortage_minutes' => 0,
             'status' => $validated['mode'] === 'site_visit' ? 'site_visit' : 'hadir',
@@ -261,7 +282,7 @@ class AttendanceController extends Controller
         $checkOutAt = now();
         $elapsedMinutes = max(1, (int) $attendance->check_in_at->diffInMinutes($checkOutAt));
         $actualMinutes = $request->integer('simulated_minutes', $elapsedMinutes);
-        $targetMinutes = $attendance->target_work_minutes ?: 540;
+        $targetMinutes = $attendance->target_work_minutes ?: $user->dailyTargetWorkMinutes();
         $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
 
         $status = $attendance->mode === 'site_visit'
@@ -338,19 +359,28 @@ class AttendanceController extends Controller
             }
         }
 
-        if ($blockReason = $this->validateCanStartOvertime($user, $today, $todayAttendance)) {
-            return redirect()->back()->with('error', $blockReason);
+        $lock = Cache::lock("overtime-start:{$user->id}", 5);
+        if (! $lock->get()) {
+            return redirect()->back()->with('error', 'Permintaan lembur sedang diproses. Mohon tunggu sebentar.');
         }
 
-        $overtime = Overtime::query()->create([
-            'attendance_id' => $todayAttendance?->id,
-            'user_id' => $user->id,
-            'project_id' => $validated['project_id'],
-            'source' => 'regular',
-            'start_at' => now(),
-            'task_description' => $validated['task_description'],
-            'status' => 'active',
-        ]);
+        try {
+            if ($blockReason = $this->validateCanStartOvertime($user, $today, $todayAttendance)) {
+                return redirect()->back()->with('error', $blockReason);
+            }
+
+            $overtime = Overtime::query()->create([
+                'attendance_id' => $todayAttendance?->id,
+                'user_id' => $user->id,
+                'project_id' => $validated['project_id'],
+                'source' => 'regular',
+                'start_at' => now(),
+                'task_description' => $validated['task_description'],
+                'status' => 'active',
+            ]);
+        } finally {
+            $lock->release();
+        }
 
         ActivityLog::record(
             action: 'overtime.started',
@@ -409,21 +439,30 @@ class AttendanceController extends Controller
         $period = CarbonPeriod::create($validated['start_date'], $validated['end_date']);
         $totalDays = 0;
         foreach ($period as $date) {
-            if (! $date->isWeekend()) {
+            if (! $user->isOffDay(Carbon::instance($date))) {
                 $totalDays++;
             }
         }
         $totalDays = max(1, $totalDays);
 
-        $leave = LeaveRequest::query()->create([
-            'user_id' => $user->id,
-            'type' => $validated['type'],
-            'start_date' => $validated['start_date'],
-            'end_date' => $validated['end_date'],
-            'total_days' => $totalDays,
-            'reason' => $validated['reason'],
-            'status' => 'pending',
-        ]);
+        $lock = Cache::lock("leave-store:{$user->id}", 5);
+        if (! $lock->get()) {
+            return redirect()->back()->with('error', 'Pengajuan izin/cuti sedang diproses. Mohon tunggu sebentar.');
+        }
+
+        try {
+            $leave = LeaveRequest::query()->create([
+                'user_id' => $user->id,
+                'type' => $validated['type'],
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'total_days' => $totalDays,
+                'reason' => $validated['reason'],
+                'status' => 'pending',
+            ]);
+        } finally {
+            $lock->release();
+        }
 
         ActivityLog::record(
             action: 'leave.requested',
@@ -501,11 +540,12 @@ class AttendanceController extends Controller
             $checkOutAt = $checkOutAt->addDay();
         }
 
+        $defaultTargetMinutes = $user->dailyTargetWorkMinutes();
         $actualMinutes = $attendance->check_in_at
             ? max(1, (int) $attendance->check_in_at->diffInMinutes($checkOutAt))
-            : 540;
+            : $defaultTargetMinutes;
 
-        $targetMinutes = $attendance->target_work_minutes ?: 540;
+        $targetMinutes = $attendance->target_work_minutes ?: $defaultTargetMinutes;
         $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
         $status = $shortageMinutes > 0 ? 'kurang_jam' : 'hadir';
 
@@ -553,7 +593,7 @@ class AttendanceController extends Controller
             return redirect()->back()->with('error', $blockReason);
         }
 
-        $targetMinutes = $attendance->target_work_minutes ?: 540;
+        $targetMinutes = $attendance->target_work_minutes ?: $user->dailyTargetWorkMinutes();
         $elapsedFromCheckIn = (int) $attendance->check_in_at->diffInMinutes(now());
 
         // Cap regular work at target 9 hours if user has exceeded it
@@ -772,9 +812,11 @@ class AttendanceController extends Controller
         ]);
 
         if ($newStatus === 'approved') {
+            $leaveUser = $leaveRequest->user?->load('employee');
             $period = CarbonPeriod::create($leaveRequest->start_date, $leaveRequest->end_date);
             foreach ($period as $date) {
-                if ($date->isWeekend()) {
+                $carbonDate = Carbon::instance($date);
+                if ($leaveUser ? $leaveUser->isOffDay($carbonDate) : $carbonDate->isWeekend()) {
                     continue;
                 }
 
@@ -849,7 +891,8 @@ class AttendanceController extends Controller
 
             if ($effectiveCheckIn && $effectiveCheckOut) {
                 $actualMinutes = max(1, (int) $effectiveCheckIn->diffInMinutes($effectiveCheckOut));
-                $targetMinutes = $attendance->target_work_minutes ?: 540;
+                $attUser = $attendance->user?->load('employee');
+                $targetMinutes = $attendance->target_work_minutes ?: ($attUser?->dailyTargetWorkMinutes() ?? 540);
                 $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
 
                 $updates['actual_work_minutes'] = $actualMinutes;
@@ -1094,11 +1137,14 @@ class AttendanceController extends Controller
             ? Carbon::parse("{$dateStr} {$validated['check_out_time']}")
             : null;
 
+        $targetUser = User::query()->with('employee')->find((int) $validated['user_id']);
+        $defaultTargetMinutes = $targetUser?->dailyTargetWorkMinutes() ?? 540;
+
         $actualMinutes = ($checkInAt && $checkOutAt)
             ? max(0, (int) $checkInAt->diffInMinutes($checkOutAt))
-            : (in_array($validated['status'], ['hadir', 'site_visit'], true) ? 540 : 0);
+            : (in_array($validated['status'], ['hadir', 'site_visit'], true) ? $defaultTargetMinutes : 0);
 
-        $targetMinutes = in_array($validated['status'], ['izin', 'sakit', 'cuti', 'ganti_hari'], true) ? 0 : 540;
+        $targetMinutes = in_array($validated['status'], ['izin', 'sakit', 'cuti', 'ganti_hari'], true) ? 0 : $defaultTargetMinutes;
         $shortageMinutes = $validated['status'] === 'kurang_jam'
             ? max(0, $targetMinutes - $actualMinutes)
             : 0;

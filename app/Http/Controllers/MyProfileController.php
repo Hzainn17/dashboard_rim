@@ -161,7 +161,7 @@ class MyProfileController extends Controller
         }
 
         $file = $request->file('photo');
-        $filename = 'avatar_'.$user->id.'_'.time().'.'.$file->getClientOriginalExtension();
+        $filename = 'avatar_'.$user->id.'_'.time().'.'.($file->guessExtension() ?: 'jpg');
         $file->move($dir, $filename);
 
         $user->update(['photo_url' => "/uploads/avatars/{$filename}"]);

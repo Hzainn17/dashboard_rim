@@ -179,6 +179,8 @@ export type PageProps<
         } | null;
         hasLeaveToday?: boolean;
         workType?: 'kantor' | 'lapangan';
+        targetWorkHours?: number;
+        targetWorkMinutes?: number;
         unclosedPastAttendance?: {
             id: number;
             date: string;
