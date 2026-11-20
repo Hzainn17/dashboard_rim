@@ -15,7 +15,14 @@ type AttendanceState = {
     skipCooldown: () => void;
     siteProject: string | null;
     setSiteProject: (id: string | null) => void;
-    checkIn: (coords?: { latitude?: number | null; longitude?: number | null; distance_meters?: number | null }) => void;
+    checkIn: (coords?: {
+        latitude?: number | null;
+        longitude?: number | null;
+        distance_meters?: number | null;
+        site_visit_project_id?: number | string | null;
+        site_visit_photo?: File | null;
+        notes?: string | null;
+    }) => void;
     checkOut: () => void;
     now: Date | null;
 };
@@ -39,7 +46,9 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState<number>(
         serverAtt?.cooldown_remaining_seconds ?? 3600,
     );
-    const [siteProject, setSiteProject] = useState<string | null>(null);
+    const [siteProject, setSiteProject] = useState<string | null>(
+        serverAtt?.site_visit_project_id ? String(serverAtt.site_visit_project_id) : null,
+    );
     const [now, setNow] = useState<Date | null>(new Date());
 
     // Sync state whenever server props update (after check-in / check-out)
@@ -50,6 +59,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
             setCheckedOutAt(serverAtt.check_out_at ? new Date(serverAtt.check_out_at) : null);
             setElapsedSeconds(serverAtt.elapsed_seconds ?? 0);
             setCooldownRemainingSeconds(serverAtt.cooldown_remaining_seconds ?? 3600);
+            setSiteProject(serverAtt.site_visit_project_id ? String(serverAtt.site_visit_project_id) : null);
         }
     }, [
         serverAtt?.id,
@@ -58,6 +68,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         serverAtt?.elapsed_seconds,
         serverAtt?.cooldown_remaining_seconds,
         serverAtt?.mode,
+        serverAtt?.site_visit_project_id,
     ]);
 
     const isWorking = !!checkedInAt && !checkedOutAt;
@@ -77,11 +88,14 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     }, [isWorking, hasCheckedOut]);
 
     const checkIn = useCallback(
-        (coords?: { latitude?: number | null; longitude?: number | null; distance_meters?: number | null }) => {
-            setCheckedInAt(new Date());
-            setCheckedOutAt(null);
-            setElapsedSeconds(0);
-            setCooldownRemainingSeconds(3600);
+        (coords?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            distance_meters?: number | null;
+            site_visit_project_id?: number | string | null;
+            site_visit_photo?: File | null;
+            notes?: string | null;
+        }) => {
             router.post(
                 route('attendance.check-in'),
                 {
@@ -95,8 +109,25 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
                     ...(coords?.distance_meters != null
                         ? { distance_meters: coords.distance_meters }
                         : {}),
+                    ...(mode === 'site' && coords?.site_visit_project_id
+                        ? { site_visit_project_id: Number(coords.site_visit_project_id) }
+                        : {}),
+                    ...(mode === 'site' && coords?.site_visit_photo
+                        ? { site_visit_photo: coords.site_visit_photo }
+                        : {}),
+                    ...(coords?.notes ? { notes: coords.notes } : {}),
                 },
-                { preserveScroll: true, preserveState: true },
+                {
+                    forceFormData: true,
+                    preserveScroll: true,
+                    preserveState: true,
+                    onSuccess: () => {
+                        setCheckedInAt(new Date());
+                        setCheckedOutAt(null);
+                        setElapsedSeconds(0);
+                        setCooldownRemainingSeconds(3600);
+                    },
+                },
             );
         },
         [mode],

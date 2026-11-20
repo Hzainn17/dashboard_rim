@@ -1,0 +1,239 @@
+<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Carbon;
+
+class ProjectPackageService
+{
+    /**
+     * Official RIM Projects Pricelist packages.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function packages(): array
+    {
+        return [
+            [
+                'id' => 'Paket 1',
+                'name' => 'Paket 1',
+                'price_per_m2' => 70000,
+                'min_area' => 80,
+                'tagline' => 'Denah Layout + Design 3D Visual',
+                'deliverables' => [
+                    'Denah Layout',
+                    'Design 3D Visual',
+                ],
+                'default_stages' => [
+                    'Tahap Konseptual V1',
+                    'Tahap Konseptual V2',
+                    'Tahap Pengembangan V1',
+                    'Tahap Pengembangan V2',
+                ],
+            ],
+            [
+                'id' => 'Paket 2',
+                'name' => 'Paket 2',
+                'price_per_m2' => 110000,
+                'min_area' => 80,
+                'tagline' => 'Denah Layout + 3D Visual + DED',
+                'deliverables' => [
+                    'Denah Layout',
+                    'Design 3D Visual',
+                    'Lembar Kerja (DED)',
+                ],
+                'default_stages' => [
+                    'Tahap Konseptual V1',
+                    'Tahap Konseptual V2',
+                    'Tahap Pengembangan V1',
+                    'Tahap Pengembangan V2',
+                    'DED',
+                ],
+            ],
+            [
+                'id' => 'Paket 3',
+                'name' => 'Paket 3',
+                'price_per_m2' => 140000,
+                'min_area' => 80,
+                'tagline' => 'Lengkap: Layout, 3D Visual, DED, RAB + Free Hard Box',
+                'deliverables' => [
+                    'Denah Layout',
+                    'Design 3D Visual',
+                    'Lembar Kerja (DED)',
+                    'RAB',
+                    'Free Hard Box (Printed Out, Flashdisk, Merchandise)',
+                ],
+                'default_stages' => [
+                    'Tahap Konseptual V1',
+                    'Tahap Konseptual V2',
+                    'Tahap Pengembangan V1',
+                    'Tahap Pengembangan V2',
+                    'DED',
+                    'RAB',
+                ],
+            ],
+            [
+                'id' => 'Interior Design Package',
+                'name' => 'Interior Design Package',
+                'price_per_m2' => 100000,
+                'min_area' => 30,
+                'tagline' => 'Denah, 3D Visual, DED & RAB Interior',
+                'deliverables' => [
+                    'Denah Layout Interior',
+                    'Design 3D Visual Interior',
+                    'Lembar Kerja (DED) Interior',
+                    'RAB Interior',
+                ],
+                'default_stages' => [
+                    'Tahap Konseptual V1',
+                    'Tahap Konseptual V2',
+                    'Tahap Pengembangan V1',
+                    'Tahap Pengembangan V2',
+                    'DED',
+                    'RAB',
+                ],
+            ],
+            [
+                'id' => 'Custom / Khusus',
+                'name' => 'Custom / Khusus',
+                'price_per_m2' => 0,
+                'min_area' => 0,
+                'tagline' => 'Layanan & lingkup kerja disesuaikan kebutuhan klien',
+                'deliverables' => [],
+                'default_stages' => [
+                    'Tahap Konseptual V1',
+                    'Tahap Konseptual V2',
+                    'Tahap Pengembangan V1',
+                    'Tahap Pengembangan V2',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Standard available add-ons from pricelist.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function addons(): array
+    {
+        return [
+            [
+                'id' => 'Add-On Interior Design',
+                'label' => 'Add-On Interior Design (+Rp 20.000/m²)',
+                'price_per_m2' => 20000,
+            ],
+            [
+                'id' => 'Pembangunan by RIM Team',
+                'label' => 'Pembangunan by RIM Projects Team (Diskon Desain 50%)',
+                'price_per_m2' => 0,
+            ],
+            [
+                'id' => 'Pengawasan Lapangan',
+                'label' => 'Pengawasan / Supervisi Lapangan Berkala',
+                'price_per_m2' => 0,
+            ],
+            [
+                'id' => 'Free Hard Box & Merchandise',
+                'label' => 'Hard Box, Draft Printed Out & Flashdisk',
+                'price_per_m2' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * Default stage metadata matching RIM Projects official timeline document.
+     *
+     * @return array<string, array{workdays: int, output: string}>
+     */
+    public static function stageTemplates(): array
+    {
+        return [
+            'Tahap Konseptual V1' => [
+                'workdays' => 7,
+                'output' => 'Tata Letak & Fungsi Ruang: Menentukan pembagian area dan alur gerak (sirkulasi) antar-ruang agar fungsional dan nyaman. Bentuk Massa Bangunan: Merancang wujud arsitektur, tampak luar, dan proporsi bangunan.',
+            ],
+            'Tahap Konseptual V2' => [
+                'workdays' => 3,
+                'output' => 'Revisi & penyempurnaan tata letak ruang serta bentuk massa bangunan berdasarkan masukan pemilik rumah.',
+            ],
+            'Tahap Pengembangan V1' => [
+                'workdays' => 7,
+                'output' => 'Desain Fasad: Mematangkan tampilan luar atau wajah bangunan. Material & Warna: Menentukan finishing dinding, lantai, serta palet warna cat. Desain Interior & Suasana Ruang: Gambaran visual suasana ruang.',
+            ],
+            'Tahap Pengembangan V2' => [
+                'workdays' => 3,
+                'output' => 'Revisi & finalisasi desain fasad, material, warna, dan visualisasi 3D.',
+            ],
+            'DED' => [
+                'workdays' => 7,
+                'output' => 'Gambar kerja teknis yang menjadi panduan detail ukuran, material, hingga detail konstruksi bagi kontraktor saat pelaksanaan di lapangan.',
+            ],
+            'RAB' => [
+                'workdays' => 7,
+                'output' => 'Rancangan Anggaran Biaya (RAB): Perhitungan estimasi biaya pembangunan berdasarkan kebutuhan material, volume pekerjaan, dan harga satuan.',
+            ],
+        ];
+    }
+
+    /**
+     * Build stages with calculated target dates based on start_date.
+     *
+     * @param  array<int, string>  $stageNames
+     * @return array<int, array<string, mixed>>
+     */
+    public static function buildStagesWithTimeline(Carbon $startDate, array $stageNames): array
+    {
+        $templates = self::stageTemplates();
+        $cursor = $startDate->copy();
+        $result = [];
+
+        foreach (array_values($stageNames) as $index => $name) {
+            $cleanName = trim($name);
+            if ($cleanName === '') {
+                continue;
+            }
+
+            $template = $templates[$cleanName] ?? [
+                'workdays' => 5,
+                'output' => 'Deliverables & asistensi tahapan '.$cleanName,
+            ];
+
+            $workdays = $template['workdays'];
+            $updateDesignDate = self::addWorkdays($cursor, $workdays);
+            $clientResponseDate = $updateDesignDate->copy()->addDays(3);
+
+            $result[] = [
+                'name' => $cleanName,
+                'order' => $index + 1,
+                'status' => $index === 0 ? 'active' : 'pending',
+                'update_design_date' => $updateDesignDate->format('Y-m-d'),
+                'client_response_date' => $clientResponseDate->format('Y-m-d'),
+                'output_notes' => $template['output'],
+                'duration_workdays' => $workdays,
+            ];
+
+            $cursor = $clientResponseDate->copy();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Add N workdays (skipping Saturday & Sunday).
+     */
+    public static function addWorkdays(Carbon $start, int $workdays): Carbon
+    {
+        $date = $start->copy();
+        $added = 0;
+
+        while ($added < $workdays) {
+            $date->addDay();
+            if (! $date->isWeekend()) {
+                $added++;
+            }
+        }
+
+        return $date;
+    }
+}

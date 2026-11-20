@@ -86,15 +86,17 @@ class HandleInertiaRequests extends Middleware
                 ->first()
             : null;
 
+        $cooldownMinutes = Schema::hasTable('office_settings')
+            ? (OfficeSetting::current()->overtime_cooldown_minutes ?? 60)
+            : 60;
         $elapsedSeconds = 0;
-        $cooldownRemainingSeconds = 3600;
+        $cooldownRemainingSeconds = $cooldownMinutes * 60;
         if ($todayAtt?->check_in_at) {
             if ($todayAtt->check_out_at) {
                 $elapsedSeconds = $todayAtt->actual_work_minutes !== null
                     ? $todayAtt->actual_work_minutes * 60
                     : max(0, (int) $todayAtt->check_in_at->diffInSeconds($todayAtt->check_out_at));
 
-                $cooldownMinutes = OfficeSetting::current()->overtime_cooldown_minutes ?: 60;
                 $secondsSinceCheckout = max(0, (int) $todayAtt->check_out_at->diffInSeconds(now()));
                 $cooldownRemainingSeconds = max(0, ($cooldownMinutes * 60) - $secondsSinceCheckout);
             } else {
@@ -123,6 +125,9 @@ class HandleInertiaRequests extends Middleware
                     'elapsed_seconds' => $elapsedSeconds,
                     'cooldown_remaining_seconds' => $cooldownRemainingSeconds,
                     'target_work_minutes' => $todayAtt->target_work_minutes ?: 540,
+                    'site_visit_project_id' => $todayAtt->site_visit_project_id,
+                    'site_visit_photo_url' => $todayAtt->site_visit_photo_url,
+                    'notes' => $todayAtt->notes,
                 ] : null,
                 'activeOvertime' => $activeOvertime ? [
                     'id' => $activeOvertime->id,

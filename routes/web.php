@@ -8,6 +8,7 @@ use App\Http\Controllers\MyProfileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProjectClientBriefController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\StudioSettingController;
 use Illuminate\Support\Facades\Route;
@@ -15,6 +16,12 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+// Public client brief form (shared to client via WhatsApp link)
+Route::get('/brief/{token}', [ProjectClientBriefController::class, 'show'])->name('brief.show');
+Route::post('/brief/{token}', [ProjectClientBriefController::class, 'submit'])
+    ->middleware('throttle:10,1')
+    ->name('brief.submit');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -44,7 +51,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
     Route::post('/projects/{project}/updates', [ProjectController::class, 'storeUpdate'])->name('projects.updates.store');
     Route::post('/projects/{project}/stages', [ProjectController::class, 'storeStage'])->name('projects.stages.store');
+    Route::patch('/projects/{project}/stages/reorder', [ProjectController::class, 'reorderStages'])->name('projects.stages.reorder');
+    Route::put('/projects/{project}/stages/{stage}', [ProjectController::class, 'updateStage'])->name('projects.stages.update');
     Route::delete('/projects/{project}/stages/{stage}', [ProjectController::class, 'destroyStage'])->name('projects.stages.destroy');
+    Route::get('/projects/{project}/timeline/print', [ProjectController::class, 'printTimeline'])->name('projects.timeline.print');
+
+    // Client Brief (Data Eksisting Klien)
+    Route::put('/projects/{project}/brief', [ProjectClientBriefController::class, 'updateFields'])->name('projects.brief.update');
+    Route::post('/projects/{project}/brief/send', [ProjectClientBriefController::class, 'markSent'])->name('projects.brief.send');
+    Route::post('/projects/{project}/brief/regenerate', [ProjectClientBriefController::class, 'regenerate'])->name('projects.brief.regenerate');
 
     // Studio & Team Calendar
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
@@ -92,6 +107,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/settings', [StudioSettingController::class, 'update'])->name('settings.update');
         Route::post('/settings/logo', [StudioSettingController::class, 'updateLogo'])->name('settings.logo.update');
         Route::delete('/settings/logo', [StudioSettingController::class, 'deleteLogo'])->name('settings.logo.delete');
+        Route::post('/settings/portfolios', [StudioSettingController::class, 'storePortfolio'])->name('settings.portfolios.store');
+        Route::post('/settings/portfolios/{portfolio}', [StudioSettingController::class, 'updatePortfolio'])->name('settings.portfolios.update');
+        Route::delete('/settings/portfolios/{portfolio}', [StudioSettingController::class, 'destroyPortfolio'])->name('settings.portfolios.destroy');
     });
 });
 

@@ -8,19 +8,24 @@ import {
     CheckCircle2,
     Clock,
     Compass,
+    Edit3,
     ExternalLink,
+    ImagePlus,
     LocateFixed,
     MapPin,
     Navigation,
+    Plus,
     Save,
     Settings,
     Trash2,
     Wallet,
+    X,
 } from 'lucide-react';
 import { AppShell } from '@/Components/dashboard/app-shell';
 import { CurrencyInput } from '@/Components/CurrencyInput';
 import { PageProps } from '@/types';
 import { cn } from '@/lib/utils';
+import { prepareWebImage } from '@/lib/image-upload';
 
 interface StudioSettingProps {
     office_name: string;
@@ -33,13 +38,24 @@ interface StudioSettingProps {
     overtime_rate_per_hour: number;
 }
 
+interface PortfolioItem {
+    id: number;
+    title: string;
+    category: string;
+    location: string;
+    caption: string;
+    image_url: string;
+    sort_order: number;
+}
+
 interface Props extends PageProps {
     setting: StudioSettingProps;
+    portfolios?: PortfolioItem[];
 }
 
 const radiusPresets = [50, 100, 150, 250, 500];
 
-export default function SettingsIndex({ auth, setting }: Props) {
+export default function SettingsIndex({ auth, setting, portfolios = [] }: Props) {
     const { flash } = usePage<PageProps>().props;
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
 
@@ -62,6 +78,90 @@ export default function SettingsIndex({ auth, setting }: Props) {
     const logoInputRef = useRef<HTMLInputElement | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [logoError, setLogoError] = useState<string | null>(null);
+
+    // Login Portfolio Management state
+    const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
+    const [editingPortfolio, setEditingPortfolio] = useState<PortfolioItem | null>(null);
+    const [portfolioTitle, setPortfolioTitle] = useState('');
+    const [portfolioCategory, setPortfolioCategory] = useState('');
+    const [portfolioLocation, setPortfolioLocation] = useState('');
+    const [portfolioCaption, setPortfolioCaption] = useState('');
+    const [portfolioImageUrl, setPortfolioImageUrl] = useState('/project-covers/rumah-tropis.png');
+    const [portfolioImageFile, setPortfolioImageFile] = useState<File | null>(null);
+    const [portfolioPreview, setPortfolioPreview] = useState<string>('/project-covers/rumah-tropis.png');
+    const [portfolioImageError, setPortfolioImageError] = useState<string | null>(null);
+    const [savingPortfolio, setSavingPortfolio] = useState(false);
+
+    const openCreatePortfolio = () => {
+        setEditingPortfolio(null);
+        setPortfolioTitle('');
+        setPortfolioCategory('');
+        setPortfolioLocation('');
+        setPortfolioCaption('');
+        setPortfolioImageUrl('/project-covers/rumah-tropis.png');
+        setPortfolioImageFile(null);
+        setPortfolioImageError(null);
+        setPortfolioPreview('/project-covers/rumah-tropis.png');
+        setIsPortfolioModalOpen(true);
+    };
+
+    const openEditPortfolio = (item: PortfolioItem) => {
+        setEditingPortfolio(item);
+        setPortfolioTitle(item.title);
+        setPortfolioCategory(item.category || '');
+        setPortfolioLocation(item.location || '');
+        setPortfolioCaption(item.caption || '');
+        setPortfolioImageUrl(item.image_url);
+        setPortfolioImageFile(null);
+        setPortfolioImageError(null);
+        setPortfolioPreview(item.image_url);
+        setIsPortfolioModalOpen(true);
+    };
+
+    const handlePortfolioFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const rawFile = e.target.files?.[0];
+        if (!rawFile) return;
+        setPortfolioImageError(null);
+        const { file, error } = await prepareWebImage(rawFile, { maxWidth: 1600, maxHeight: 1200, maxBytes: 4 * 1024 * 1024 });
+        if (error) {
+            setPortfolioImageError(error);
+            e.target.value = '';
+            return;
+        }
+        setPortfolioImageFile(file);
+        setPortfolioPreview(URL.createObjectURL(file));
+    };
+
+    const handlePortfolioSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSavingPortfolio(true);
+
+        const payload = new FormData();
+        payload.append('title', portfolioTitle);
+        payload.append('category', portfolioCategory);
+        payload.append('location', portfolioLocation);
+        payload.append('caption', portfolioCaption);
+        payload.append('image_url', portfolioImageUrl);
+        if (portfolioImageFile) {
+            payload.append('image', portfolioImageFile);
+        }
+
+        const targetUrl = editingPortfolio
+            ? route('settings.portfolios.update', editingPortfolio.id)
+            : route('settings.portfolios.store');
+
+        router.post(targetUrl, payload, {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => setIsPortfolioModalOpen(false),
+            onFinish: () => setSavingPortfolio(false),
+        });
+    };
+
+    const handleDeletePortfolio = (id: number) => {
+        if (!confirm('Hapus slide portofolio ini dari halaman login?')) return;
+        router.delete(route('settings.portfolios.destroy', id), { preserveScroll: true });
+    };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -625,7 +725,223 @@ export default function SettingsIndex({ auth, setting }: Props) {
                         </section>
                     </div>
                 </form>
+
+                {/* Portofolio Halaman Login */}
+                <section className="rounded-xl border bg-card p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-foreground">
+                                Portofolio Halaman Login
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                                Foto karya studio yang tampil bergantian di sisi kiri halaman login.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={openCreatePortfolio}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#46797b] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#3a6668]"
+                        >
+                            <Plus className="size-3.5" />
+                            <span>Tambah Portofolio</span>
+                        </button>
+                    </div>
+
+                    {portfolios.length === 0 ? (
+                        <div className="mt-4 rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+                            Belum ada portofolio halaman login. Klik <strong>Tambah Portofolio</strong> untuk mengunggah foto karya studio.
+                        </div>
+                    ) : (
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            {portfolios.map((item) => (
+                                <div
+                                    key={item.id}
+                                    className="group flex flex-col overflow-hidden rounded-xl border bg-background"
+                                >
+                                    <div className="relative h-40 w-full shrink-0 overflow-hidden bg-muted">
+                                        <img
+                                            src={item.image_url}
+                                            alt={item.title}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    </div>
+                                    <div className="flex flex-1 flex-col gap-1 p-3">
+                                        {item.category && (
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#46797b]">
+                                                {item.category}
+                                            </span>
+                                        )}
+                                        <h3 className="text-xs font-bold text-foreground line-clamp-1">
+                                            {item.title}
+                                        </h3>
+                                        {item.location && (
+                                            <p className="text-[11px] text-muted-foreground line-clamp-1">
+                                                {item.location}
+                                            </p>
+                                        )}
+                                        {item.caption && (
+                                            <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
+                                                {item.caption}
+                                            </p>
+                                        )}
+                                        <div className="mt-auto flex items-center justify-end gap-1.5 pt-2 border-t">
+                                            <button
+                                                type="button"
+                                                onClick={() => openEditPortfolio(item)}
+                                                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-muted"
+                                            >
+                                                <Edit3 className="size-3" />
+                                                <span>Edit</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeletePortfolio(item.id)}
+                                                className="rounded-md border p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600"
+                                                title="Hapus"
+                                            >
+                                                <Trash2 className="size-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
             </div>
+
+            {/* Modal Tambah / Edit Portofolio Login */}
+            {isPortfolioModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+                    <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border bg-card p-6 shadow-2xl">
+                        <div className="flex items-start justify-between border-b pb-3">
+                            <div>
+                                <h3 className="text-base font-bold text-foreground">
+                                    {editingPortfolio ? 'Edit Portofolio Login' : 'Tambah Portofolio Login'}
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Unggah foto langsung dari perangkat atau pilih gambar bawaan studio.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsPortfolioModalOpen(false)}
+                                className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                            >
+                                <X className="size-4" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handlePortfolioSubmit} className="mt-4 flex flex-col gap-3">
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Gambar Portofolio <span className="text-rose-500">*</span>
+                                </label>
+                                <div className="mt-1.5 h-48 w-full overflow-hidden rounded-xl border bg-muted">
+                                    <img
+                                        src={portfolioPreview}
+                                        alt="Preview"
+                                        className="h-full w-full object-cover"
+                                    />
+                                </div>
+
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+                                        <ImagePlus className="size-3.5 text-[#46797b]" />
+                                        <span>Unggah Gambar dari Perangkat</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handlePortfolioFileSelect}
+                                            className="hidden"
+                                        />
+                                    </label>
+                                    <span className="text-[11px] text-muted-foreground">
+                                        Otomatis disesuaikan untuk web (maks. 4 MB). Kosongkan untuk gambar default.
+                                    </span>
+                                </div>
+                                {portfolioImageError && (
+                                    <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                                        <AlertTriangle className="size-4 shrink-0" />
+                                        <span>{portfolioImageError}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Judul Proyek <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={portfolioTitle}
+                                    onChange={(e) => setPortfolioTitle(e.target.value)}
+                                    placeholder="cth: Villa Kayu & Batu Alam Lembang"
+                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Kategori
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={portfolioCategory}
+                                        onChange={(e) => setPortfolioCategory(e.target.value)}
+                                        placeholder="cth: Hunian Privat"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Lokasi
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={portfolioLocation}
+                                        onChange={(e) => setPortfolioLocation(e.target.value)}
+                                        placeholder="cth: Bandung Barat"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Deskripsi Singkat / Caption
+                                </label>
+                                <textarea
+                                    rows={2}
+                                    value={portfolioCaption}
+                                    onChange={(e) => setPortfolioCaption(e.target.value)}
+                                    placeholder="Harmoni arsitektur tropis modern..."
+                                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-xs focus:border-foreground focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-end gap-2 border-t pt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPortfolioModalOpen(false)}
+                                    className="rounded-lg border px-3.5 py-1.5 text-xs font-semibold hover:bg-muted"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingPortfolio}
+                                    className="rounded-lg bg-[#46797b] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#3a6668] disabled:opacity-50"
+                                >
+                                    {savingPortfolio ? 'Menyimpan...' : 'Simpan Portofolio'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </AppShell>
     );
 }

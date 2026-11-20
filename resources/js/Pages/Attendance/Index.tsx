@@ -22,6 +22,7 @@ import {
     Timer,
     X,
 } from 'lucide-react';
+import { CameraCaptureModal } from '@/Components/CameraCaptureModal';
 import { AppShell } from '@/Components/dashboard/app-shell';
 import { useOfficeGps } from '@/lib/geolocation';
 import { cn } from '@/lib/utils';
@@ -164,6 +165,8 @@ export default function AttendanceIndex({
     );
     const [notes, setNotes] = useState<string>(todayAttendance?.notes ?? '');
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [cameraOpen, setCameraOpen] = useState(false);
 
     // Weekend mode simulation or actual weekend
     const [weekendSim, setWeekendSim] = useState<boolean>(isWeekendToday);
@@ -241,8 +244,14 @@ export default function AttendanceIndex({
         return () => window.clearInterval(id);
     }, [isWorking, hasCheckedOut, activeOvertime]);
 
+    const isSiteVisitToday = todayAttendance?.mode === 'site_visit';
+    const isOfficeGpsBlockedForOvertime = !isSiteVisitToday && !gps.isWithinRadius;
     const canStartOvertime =
-        !isLockedDay && !hasCompletedOvertimeToday && hasCheckedOut && cooldownSeconds === 0;
+        !isLockedDay &&
+        !hasCompletedOvertimeToday &&
+        hasCheckedOut &&
+        cooldownSeconds === 0 &&
+        !isOfficeGpsBlockedForOvertime;
 
     const checkInDate = todayAttendance?.check_in_at ? new Date(todayAttendance.check_in_at) : null;
 
@@ -296,7 +305,13 @@ export default function AttendanceIndex({
         task_description: '',
     });
 
+    const canCheckInSiteVisit = mode === 'office' || (!!siteProjectId && !!photoFile);
+
     const handleCheckIn = () => {
+        if (!canCheckInSiteVisit) {
+            return;
+        }
+
         router.post(
             route('attendance.check-in'),
             {
@@ -309,12 +324,13 @@ export default function AttendanceIndex({
                       }
                     : {}),
                 site_visit_project_id: mode === 'site_visit' ? Number(siteProjectId) : null,
-                notes,
+                ...(mode === 'site_visit' && photoFile ? { site_visit_photo: photoFile } : {}),
+                notes: notes || null,
                 is_weekend: weekendSim,
                 compensation_type: weekendSim ? compensationType : 'none',
                 exchange_date: weekendSim && compensationType === 'day_off_exchange' ? exchangeDate : null,
             },
-            { preserveScroll: true },
+            { forceFormData: true, preserveScroll: true },
         );
     };
 
@@ -339,10 +355,22 @@ export default function AttendanceIndex({
 
     const handleStartOvertime = (e: React.FormEvent) => {
         e.preventDefault();
-        overtimeForm.post(route('attendance.overtime.start'), {
-            preserveScroll: true,
-            onSuccess: () => overtimeForm.reset('task_description'),
-        });
+        if (!canStartOvertime) {
+            return;
+        }
+        router.post(
+            route('attendance.overtime.start'),
+            {
+                ...overtimeForm.data,
+                ...(gps.latitude !== null && gps.longitude !== null
+                    ? { latitude: gps.latitude, longitude: gps.longitude }
+                    : {}),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => overtimeForm.reset('task_description'),
+            },
+        );
     };
 
     const handleStopOvertime = (id: number) => {
@@ -770,21 +798,21 @@ export default function AttendanceIndex({
                                                     </select>
 
                                                     <label className="mt-1 text-xs font-medium text-muted-foreground">
-                                                        Uraian Kegiatan Lapangan
+                                                        Uraian Kegiatan Lapangan (Opsional)
                                                     </label>
                                                     <input
                                                         type="text"
                                                         disabled={isWorking}
                                                         value={notes}
                                                         onChange={(e) => setNotes(e.target.value)}
-                                                        placeholder="Contoh: Cek progres bekisting lantai 2"
+                                                        placeholder="Opsional: Contoh cek progres bekisting lantai 2"
                                                         className="h-9 rounded-lg border bg-card px-3 text-sm outline-none focus-visible:border-ring"
                                                     />
                                                 </div>
 
                                                 <div>
                                                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                                                        Foto Bukti Kamera Lokasi Proyek
+                                                        Foto Bukti Lokasi Proyek *
                                                     </label>
                                                     {photoPreview || todayAttendance?.site_visit_photo_url ? (
                                                         <div className="relative overflow-hidden rounded-lg border">
@@ -800,7 +828,10 @@ export default function AttendanceIndex({
                                                             {!isWorking && (
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setPhotoPreview(null)}
+                                                                    onClick={() => {
+                                                                        setPhotoPreview(null);
+                                                                        setPhotoFile(null);
+                                                                    }}
                                                                     className="absolute top-2 right-2 rounded-md bg-background/90 p-1 text-foreground shadow-xs"
                                                                 >
                                                                     <X className="size-3.5" />
@@ -808,24 +839,37 @@ export default function AttendanceIndex({
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <label className="flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed bg-card px-3 text-center transition-colors hover:border-primary/50 hover:bg-accent/30">
-                                                            <Camera className="size-5 text-muted-foreground" />
-                                                            <span className="text-xs font-medium">
-                                                                Ambil / Unggah Foto Lokasi
-                                                            </span>
+                                                        <div className="flex h-28 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card px-3 text-center">
+                                                            <div className="flex flex-wrap items-center justify-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isWorking}
+                                                                    onClick={() => setCameraOpen(true)}
+                                                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                                                >
+                                                                    <Camera className="size-3.5" />
+                                                                    Kamera Laptop / HP
+                                                                </button>
+                                                                <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium hover:bg-muted">
+                                                                    Lampirkan Foto
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        className="sr-only"
+                                                                        onChange={(e) => {
+                                                                            const f = e.target.files?.[0];
+                                                                            if (f) {
+                                                                                setPhotoFile(f);
+                                                                                setPhotoPreview(URL.createObjectURL(f));
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                            </div>
                                                             <span className="text-[11px] text-muted-foreground">
-                                                                Diverifikasi Admin di Pusat Approval
+                                                                Wajib ambil foto langsung atau lampirkan foto lokasi
                                                             </span>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                className="sr-only"
-                                                                onChange={(e) => {
-                                                                    const f = e.target.files?.[0];
-                                                                    if (f) setPhotoPreview(URL.createObjectURL(f));
-                                                                }}
-                                                            />
-                                                        </label>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -905,14 +949,19 @@ export default function AttendanceIndex({
                                             {!isWorking ? (
                                                 <button
                                                     type="button"
+                                                    disabled={!canCheckInSiteVisit}
                                                     onClick={handleCheckIn}
-                                                    className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                                                    className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     <LogIn className="size-4" />
                                                     {hasCheckedOut
                                                         ? 'Check-in Ulang Hari Ini'
                                                         : mode === 'office'
                                                         ? 'Check-in Kantor Sekarang'
+                                                        : !siteProjectId
+                                                        ? 'Pilih Proyek Terlebih Dahulu'
+                                                        : !photoFile
+                                                        ? 'Wajib Ambil / Lampirkan Foto Lokasi'
                                                         : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : (
@@ -1042,7 +1091,15 @@ export default function AttendanceIndex({
                                         {!hasCheckedOut ? (
                                             <div className="flex flex-col gap-2 rounded-lg border border-dashed bg-muted/40 px-3.5 py-2.5 text-xs text-muted-foreground">
                                                 <span>
-                                                    Selesaikan jam kerja normal & lakukan <strong>Check-out</strong> terlebih dahulu. Tombol lembur akan aktif setelah jeda istirahat 1 jam.
+                                                    Selesaikan jam kerja normal &amp; lakukan <strong>Check-out</strong> terlebih dahulu.{' '}
+                                                    {officeSetting.overtime_cooldown_minutes === 0
+                                                        ? 'Tombol lembur akan langsung aktif setelah check-out.'
+                                                        : `Tombol lembur akan aktif setelah jeda istirahat ${
+                                                              officeSetting.overtime_cooldown_minutes >= 60 &&
+                                                              officeSetting.overtime_cooldown_minutes % 60 === 0
+                                                                  ? `${officeSetting.overtime_cooldown_minutes / 60} jam`
+                                                                  : `${officeSetting.overtime_cooldown_minutes} menit`
+                                                          }.`}
                                                 </span>
                                                 {isWorking && (
                                                     <button
@@ -1072,9 +1129,28 @@ export default function AttendanceIndex({
                                                     Lewati Jeda (Demo)
                                                 </button>
                                             </div>
+                                        ) : isOfficeGpsBlockedForOvertime ? (
+                                            <div className="rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-xs text-destructive">
+                                                Anda berada di luar radius kantor (
+                                                {gps.distanceMeters !== null
+                                                    ? `${gps.distanceMeters}m`
+                                                    : 'GPS belum aktif'}{' '}
+                                                / maks {officeSetting.radius_meters}m). Lembur kantor hanya dapat dimulai di area studio.
+                                            </div>
+                                        ) : isSiteVisitToday ? (
+                                            <div className="rounded-lg border border-sky-300 bg-sky-50 px-3.5 py-2 text-xs font-medium text-sky-900">
+                                                Mode Site Visit Lapangan: Lembur dapat dimulai dari lokasi proyek &amp; diverifikasi Admin di Pusat Approval.
+                                            </div>
                                         ) : (
                                             <div className="rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-xs font-medium text-success">
-                                                Jeda istirahat 1 jam selesai · Anda dapat memulai lembur sekarang.
+                                                {officeSetting.overtime_cooldown_minutes === 0
+                                                    ? 'Anda berada dalam radius kantor & dapat memulai lembur sekarang.'
+                                                    : `Jeda istirahat ${
+                                                          officeSetting.overtime_cooldown_minutes >= 60 &&
+                                                          officeSetting.overtime_cooldown_minutes % 60 === 0
+                                                              ? `${officeSetting.overtime_cooldown_minutes / 60} jam`
+                                                              : `${officeSetting.overtime_cooldown_minutes} menit`
+                                                      } selesai · Anda berada dalam radius kantor & dapat memulai lembur sekarang.`}
                                             </div>
                                         )}
 
@@ -1763,6 +1839,15 @@ export default function AttendanceIndex({
                     </div>
                 )}
             </AppShell>
+
+            <CameraCaptureModal
+                open={cameraOpen}
+                onClose={() => setCameraOpen(false)}
+                onCapture={(file, preview) => {
+                    setPhotoFile(file);
+                    setPhotoPreview(preview);
+                }}
+            />
         </>
     );
 }

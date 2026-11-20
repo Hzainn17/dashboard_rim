@@ -8,6 +8,7 @@ import {
     Eye,
     FolderKanban,
     HardHat,
+    ImagePlus,
     Plus,
     Search,
     X,
@@ -17,8 +18,13 @@ import {
     ProjectCard,
     type UnifiedProjectCardData,
 } from '@/Components/dashboard/project-gallery';
+import {
+    ProjectsTimelineCalendar,
+    type TimelineProject,
+} from '@/Components/dashboard/projects-timeline-calendar';
 import { PageProps } from '@/types';
 import { cn } from '@/lib/utils';
+import { prepareWebImage } from '@/lib/image-upload';
 
 interface ProjectMemberItem {
     id: number;
@@ -60,6 +66,22 @@ interface Metrics {
     urgent_projects: number;
 }
 
+interface PackageOption {
+    id: string;
+    name: string;
+    price_per_m2: number;
+    min_area: number;
+    tagline: string;
+    deliverables: string[];
+    default_stages: string[];
+}
+
+interface AddonOption {
+    id: string;
+    label: string;
+    price_per_m2: number;
+}
+
 interface Props extends PageProps {
     projects: ProjectCardData[];
     metrics: Metrics;
@@ -70,22 +92,17 @@ interface Props extends PageProps {
         tab?: string;
     };
     categories: string[];
+    packages: PackageOption[];
+    addons: AddonOption[];
     teamMembers: TeamMemberOption[];
+    timelineProjects: TimelineProject[];
 }
 
 const defaultStages = [
-    'Konsep',
-    'Pra-Rancangan',
-    'DED',
-    '3D Visualisasi',
-    'Konstruksi',
-];
-
-const presetImages = [
-    { label: 'Rumah Tropis', url: '/project-covers/rumah-tropis.png' },
-    { label: 'Kantor Sudirman', url: '/project-covers/kantor-sudirman.png' },
-    { label: 'Kopi Senja Interior', url: '/project-covers/interior-kafe.png' },
-    { label: 'Villa Lembang', url: '/project-covers/villa-lembang.png' },
+    'Tahap Konseptual V1',
+    'Tahap Konseptual V2',
+    'Tahap Pengembangan V1',
+    'Tahap Pengembangan V2',
 ];
 
 export default function ProjectIndex({
@@ -94,7 +111,10 @@ export default function ProjectIndex({
     metrics,
     filters,
     categories,
+    packages = [],
+    addons = [],
     teamMembers,
+    timelineProjects = [],
 }: Props) {
     const { flash } = usePage<PageProps>().props;
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
@@ -153,7 +173,13 @@ export default function ProjectIndex({
         client_name: '',
         client_phone: '',
         location: '',
-        category: 'Residensial',
+        category: 'Paket 1',
+        package_name: 'Paket 1',
+        package_addons: [] as string[],
+        building_area: '',
+        estimated_budget: '',
+        custom_scope_notes: '',
+        cover_image: null as File | null,
         cover_image_url: '/project-covers/rumah-tropis.png',
         drive_url: '',
         description: '',
@@ -164,6 +190,57 @@ export default function ProjectIndex({
         member_ids: [] as number[],
         stages: defaultStages,
     });
+
+    const calculateBudget = (pkgName: string, areaStr: string, selectedAddons: string[]) => {
+        const area = parseFloat(areaStr);
+        if (!area || isNaN(area) || area <= 0) return '';
+        const pkg = packages.find((p) => p.id === pkgName);
+        if (!pkg || pkg.price_per_m2 === 0) return '';
+
+        let ratePerM2 = pkg.price_per_m2;
+        if (selectedAddons.includes('Add-On Interior Design')) {
+            ratePerM2 += 20000;
+        }
+        let total = Math.round(area * ratePerM2);
+        if (selectedAddons.includes('Pembangunan by RIM Team')) {
+            total = Math.round(total * 0.5);
+        }
+        return String(total);
+    };
+
+    const handlePackageChange = (pkgId: string) => {
+        const pkg = packages.find((p) => p.id === pkgId);
+        const newBudget = calculateBudget(pkgId, data.building_area, data.package_addons);
+        setData((prev) => ({
+            ...prev,
+            package_name: pkgId,
+            category: pkgId,
+            stages: pkg?.default_stages?.length ? pkg.default_stages : prev.stages,
+            estimated_budget: newBudget || prev.estimated_budget,
+        }));
+    };
+
+    const toggleAddon = (addonId: string) => {
+        const exists = data.package_addons.includes(addonId);
+        const nextAddons = exists
+            ? data.package_addons.filter((id) => id !== addonId)
+            : [...data.package_addons, addonId];
+        const newBudget = calculateBudget(data.package_name, data.building_area, nextAddons);
+        setData((prev) => ({
+            ...prev,
+            package_addons: nextAddons,
+            estimated_budget: newBudget || prev.estimated_budget,
+        }));
+    };
+
+    const handleAreaChange = (val: string) => {
+        const newBudget = calculateBudget(data.package_name, val, data.package_addons);
+        setData((prev) => ({
+            ...prev,
+            building_area: val,
+            estimated_budget: newBudget,
+        }));
+    };
 
     const [customStageInput, setCustomStageInput] = useState('');
 
@@ -191,12 +268,18 @@ export default function ProjectIndex({
         }
     };
 
+    const [coverPreview, setCoverPreview] = useState('/project-covers/rumah-tropis.png');
+    const [coverError, setCoverError] = useState<string | null>(null);
+
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         post(route('projects.store'), {
+            forceFormData: true,
             onSuccess: () => {
                 setIsCreateModalOpen(false);
                 reset();
+                setCoverError(null);
+                setCoverPreview('/project-covers/rumah-tropis.png');
             },
         });
     };
@@ -220,29 +303,12 @@ export default function ProjectIndex({
             ratio: metrics.ongoing_projects / total,
         },
         {
-            label: 'Asistensi / Review',
-            value: String(metrics.review_projects),
-            suffix: 'proyek',
-            hint: 'Menunggu persetujuan klien',
-            icon: Eye,
-            ratio: metrics.review_projects / total,
-        },
-        {
             label: 'Proyek Selesai',
             value: String(metrics.done_projects),
             suffix: 'proyek',
             hint: 'Serah terima dokumen tuntas',
             icon: CheckCircle2,
             ratio: metrics.done_projects / total,
-        },
-        {
-            label: 'Deadline Mendesak',
-            value: String(metrics.urgent_projects),
-            suffix: '≤ 7 hari',
-            hint: 'Prioritas penyelesaian minggu ini',
-            icon: AlertTriangle,
-            ratio: metrics.urgent_projects / total,
-            urgent: metrics.urgent_projects > 0,
         },
     ];
 
@@ -291,10 +357,11 @@ export default function ProjectIndex({
                     </div>
                 )}
 
-                {/* 5 Quick Metric Cards */}
+                {/* 3 Metric Cards + Kalender Timeline Semua Proyek Berjalan */}
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
                 <section
                     aria-label="Statistik proyek"
-                    className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+                    className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:content-start"
                 >
                     {metricCards.map((m) => {
                         const Icon = m.icon;
@@ -308,10 +375,7 @@ export default function ProjectIndex({
                                         {m.label}
                                     </p>
                                     <Icon
-                                        className={cn(
-                                            'size-4',
-                                            m.urgent ? 'text-primary' : 'text-muted-foreground'
-                                        )}
+                                        className="size-4 text-muted-foreground"
                                         aria-hidden="true"
                                     />
                                 </div>
@@ -330,10 +394,7 @@ export default function ProjectIndex({
                                     aria-hidden="true"
                                 >
                                     <div
-                                        className={cn(
-                                            'h-full rounded-full',
-                                            m.urgent ? 'bg-primary' : 'bg-foreground/80'
-                                        )}
+                                        className="h-full rounded-full bg-foreground/80"
                                         style={{ width: `${Math.min(100, m.ratio * 100)}%` }}
                                     />
                                 </div>
@@ -342,6 +403,9 @@ export default function ProjectIndex({
                         );
                     })}
                 </section>
+
+                <ProjectsTimelineCalendar projects={timelineProjects} />
+                </div>
 
                 {/* Filter & Search Bar */}
                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
@@ -543,21 +607,125 @@ export default function ProjectIndex({
                                     )}
                                 </div>
 
-                                <div>
+                                <div className="sm:col-span-2">
                                     <label className="text-xs font-semibold text-foreground">
-                                        Kategori Desain <span className="text-rose-500">*</span>
+                                        Paket Layanan (Pricelist RIM Projects) <span className="text-rose-500">*</span>
                                     </label>
-                                    <select
-                                        value={data.category}
-                                        onChange={(e) => setData('category', e.target.value)}
-                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
-                                    >
-                                        {categories.map((c) => (
-                                            <option key={c} value={c}>
-                                                {c}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {packages.map((pkg) => {
+                                            const active = data.package_name === pkg.id;
+                                            return (
+                                                <button
+                                                    key={pkg.id}
+                                                    type="button"
+                                                    onClick={() => handlePackageChange(pkg.id)}
+                                                    className={cn(
+                                                        'flex flex-col items-start rounded-xl border p-3 text-left transition-all',
+                                                        active
+                                                            ? 'border-[#46797b] bg-[#46797b]/5 ring-1 ring-[#46797b]'
+                                                            : 'border-border bg-background hover:bg-muted/40'
+                                                    )}
+                                                >
+                                                    <div className="flex w-full items-center justify-between gap-2">
+                                                        <span className="text-xs font-bold text-foreground">
+                                                            {pkg.name}
+                                                        </span>
+                                                        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                                                            {pkg.price_per_m2 > 0
+                                                                ? `Rp ${(pkg.price_per_m2 / 1000).toFixed(0)}.000/m²`
+                                                                : 'Custom'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                                        {pkg.tagline}
+                                                    </p>
+                                                    {pkg.min_area > 0 && (
+                                                        <span className="mt-1 text-[10px] text-muted-foreground">
+                                                            Min. order {pkg.min_area} m²
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Add-on & Custom Scope */}
+                                <div className="sm:col-span-2 rounded-xl border bg-muted/20 p-3">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Layanan Tambahan (Add-On) &amp; Custom
+                                    </label>
+                                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {addons.map((addon) => {
+                                            const checked = data.package_addons.includes(addon.id);
+                                            return (
+                                                <label
+                                                    key={addon.id}
+                                                    className={cn(
+                                                        'flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs transition-colors',
+                                                        checked
+                                                            ? 'border-[#46797b] bg-[#46797b]/5 font-medium text-foreground'
+                                                            : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
+                                                    )}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => toggleAddon(addon.id)}
+                                                        className="mt-0.5 rounded border-gray-300 text-[#46797b] focus:ring-[#46797b]"
+                                                    />
+                                                    <span className="leading-snug">{addon.label}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-foreground">
+                                                Luas Bangunan (m²)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                value={data.building_area}
+                                                onChange={(e) => handleAreaChange(e.target.value)}
+                                                placeholder="cth: 120"
+                                                className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-foreground">
+                                                Estimasi Nilai Kontrak Desain (Rp)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={data.estimated_budget}
+                                                onChange={(e) =>
+                                                    setData('estimated_budget', e.target.value)
+                                                }
+                                                placeholder="Otomatis terhitung atau isi manual"
+                                                className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-2.5">
+                                        <label className="text-[11px] font-semibold text-foreground">
+                                            Catatan Lingkup Custom / Request Khusus Klien (Opsional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.custom_scope_notes}
+                                            onChange={(e) =>
+                                                setData('custom_scope_notes', e.target.value)
+                                            }
+                                            placeholder="cth: Hanya desain fasad + revisi ruang tamu, atau tambahan 3D animasi"
+                                            className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs placeholder:text-muted-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div>
@@ -676,34 +844,49 @@ export default function ProjectIndex({
                                 <label className="text-xs font-semibold text-foreground">
                                     Gambar Cover / 3D Render
                                 </label>
-                                <div className="mt-1 flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={data.cover_image_url}
-                                        onChange={(e) => setData('cover_image_url', e.target.value)}
-                                        placeholder="/project-covers/rumah-tropis.png"
-                                        className="h-9 flex-1 rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <img
+                                        src={coverPreview}
+                                        alt="Preview"
+                                        className="h-16 w-28 rounded-lg object-cover border shrink-0"
                                     />
-                                </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    <span className="text-[11px] text-muted-foreground">
-                                        Preset Cover Studio:
-                                    </span>
-                                    {presetImages.map((p) => (
-                                        <button
-                                            key={p.url}
-                                            type="button"
-                                            onClick={() => setData('cover_image_url', p.url)}
-                                            className={cn(
-                                                'rounded-md border px-2 py-0.5 text-[11px] font-medium transition',
-                                                data.cover_image_url === p.url
-                                                    ? 'border-primary bg-primary/10 text-primary'
-                                                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                                            )}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
+                                    <div className="flex flex-col gap-2 flex-1">
+                                        <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+                                            <ImagePlus className="size-3.5 text-[#46797b]" />
+                                            <span>Unggah Gambar dari Perangkat</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={async (e) => {
+                                                    const rawFile = e.target.files?.[0];
+                                                    if (!rawFile) return;
+                                                    setCoverError(null);
+                                                    const { file, error } = await prepareWebImage(rawFile, {
+                                                        maxWidth: 1600,
+                                                        maxHeight: 1200,
+                                                        maxBytes: 4 * 1024 * 1024,
+                                                    });
+                                                    if (error) {
+                                                        setCoverError(error);
+                                                        e.target.value = '';
+                                                        return;
+                                                    }
+                                                    setData('cover_image', file);
+                                                    setCoverPreview(URL.createObjectURL(file));
+                                                }}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Otomatis disesuaikan untuk web (maks. 4 MB). Kosongkan untuk cover default.
+                                        </span>
+                                        {coverError && (
+                                            <div className="flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">
+                                                <AlertTriangle className="size-3.5 shrink-0" />
+                                                <span>{coverError}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 

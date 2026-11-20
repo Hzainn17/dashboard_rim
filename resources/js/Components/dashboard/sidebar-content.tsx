@@ -2,7 +2,7 @@ import * as React from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/Components/ui/collapsible';
-import { adminNav, currentUser, karyawanNav, type Role } from '@/lib/studio-data';
+import { adminNav, karyawanNav, type Role } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
 import { MemberAvatar } from './member-avatar';
@@ -31,9 +31,10 @@ export function BrandMark() {
 export function SidebarContent({ role, active, onNavigate }: SidebarContentProps) {
     const { auth } = usePage<PageProps>().props;
     const nav = role === 'admin' ? adminNav : karyawanNav;
-    const fallbackUser = currentUser[role];
-    const displayName = auth?.user?.name || fallbackUser.name;
-    const roleLabel = auth?.user?.employee?.position || fallbackUser.roleLabel;
+    const displayName = auth?.user?.name || 'Tim Studio';
+    const roleLabel =
+        auth?.user?.employee?.position ||
+        (role === 'admin' ? 'Admin Studio' : 'Karyawan');
 
     return (
         <div className="flex h-full flex-col">
@@ -100,7 +101,7 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
                         className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                         <MemberAvatar
-                            id={auth?.user?.id ?? fallbackUser.id}
+                            id={auth?.user?.id ?? 0}
                             name={displayName}
                             photoUrl={auth?.user?.photo_url}
                             className="size-9 shrink-0 text-xs ring-0"

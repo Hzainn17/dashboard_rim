@@ -9,10 +9,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'name', 'client_name', 'client_phone', 'location', 'category',
+    'package_name', 'package_addons', 'building_area', 'estimated_budget', 'custom_scope_notes',
     'cover_image_url', 'drive_url', 'description', 'status',
     'progress_percent', 'start_date', 'due_date', 'owner_id',
 ])]
@@ -32,6 +34,9 @@ class Project extends Model
             'start_date' => 'date',
             'due_date' => 'date',
             'progress_percent' => 'integer',
+            'package_addons' => 'array',
+            'building_area' => 'float',
+            'estimated_budget' => 'integer',
         ];
     }
 
@@ -88,6 +93,14 @@ class Project extends Model
     public function updates(): HasMany
     {
         return $this->hasMany(ProjectUpdate::class)->latest();
+    }
+
+    /**
+     * @return HasOne<ProjectClientBrief, $this>
+     */
+    public function clientBrief(): HasOne
+    {
+        return $this->hasOne(ProjectClientBrief::class);
     }
 
     /**

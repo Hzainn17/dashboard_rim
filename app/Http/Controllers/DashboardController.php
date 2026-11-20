@@ -97,7 +97,7 @@ class DashboardController extends Controller
             ->with(['members:id,name,photo_url', 'stages'])
             ->whereIn('status', ['planning', 'ongoing', 'review'])
             ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC')
-            ->take(8)
+            ->take(4)
             ->get()
             ->map(function (Project $project) use ($today) {
                 $daysLeft = $project->due_date ? (int) $today->diffInDays($project->due_date, false) : null;
@@ -114,7 +114,7 @@ class DashboardController extends Controller
                     'name' => $project->name,
                     'client_name' => $project->client_name,
                     'location' => $project->location,
-                    'category' => $project->category ?: 'Residensial',
+                    'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
                     'phase' => $phase,
                     'cover_image_url' => $project->cover_image_url ?: '/project-covers/rumah-tropis.png',
                     'status' => $project->status,

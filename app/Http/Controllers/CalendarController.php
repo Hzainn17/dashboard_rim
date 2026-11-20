@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\Attendance;
 use App\Models\CalendarEvent;
 use App\Models\Project;
+use App\Models\ProjectStage;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -119,8 +120,79 @@ class CalendarController extends Controller
                 ]],
             ]);
 
+        // Integrate Project Stage design deadlines automatically
+        $stageDeadlines = ProjectStage::query()
+            ->with(['project.members.employee'])
+            ->whereHas('project')
+            ->where(function ($q) use ($rangeStart, $rangeEnd): void {
+                $q->whereBetween('update_design_date', [$rangeStart->toDateString(), $rangeEnd->toDateString()])
+                    ->orWhereBetween('client_response_date', [$rangeStart->toDateString(), $rangeEnd->toDateString()]);
+            })
+            ->get()
+            ->flatMap(function (ProjectStage $stage) use ($rangeStart, $rangeEnd): array {
+                $events = [];
+                $project = $stage->project;
+                if (! $project) {
+                    return [];
+                }
+
+                $participants = $project->members->map(fn (User $u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'position' => $u->employee?->position ?? 'Arsitek',
+                    'photo_url' => $u->photo_url,
+                ])->values()->all();
+
+                if ($stage->update_design_date && $stage->update_design_date->between($rangeStart->copy()->startOfDay(), $rangeEnd->copy()->endOfDay())) {
+                    $events[] = [
+                        'id' => "stage_design_{$stage->id}",
+                        'raw_id' => $stage->id,
+                        'title' => "Update Desain: {$stage->name} ({$project->name})",
+                        'description' => "Batas maksimal update desain tahapan {$stage->name} untuk proyek {$project->name}.".($stage->output_notes ? " Output: {$stage->output_notes}" : ''),
+                        'location' => $project->location ?: 'Studio RIM',
+                        'type' => 'deadline',
+                        'start_at' => $stage->update_design_date->copy()->setTime(17, 0)->toIso8601String(),
+                        'end_at' => $stage->update_design_date->copy()->setTime(17, 0)->toIso8601String(),
+                        'date' => $stage->update_design_date->format('Y-m-d'),
+                        'time' => '17:00',
+                        'end_time' => null,
+                        'is_all_day' => false,
+                        'is_virtual' => true,
+                        'project_id' => $project->id,
+                        'project_name' => $project->name,
+                        'creator_name' => 'Timeline Proyek',
+                        'participants' => $participants,
+                    ];
+                }
+
+                if ($stage->client_response_date && $stage->client_response_date->between($rangeStart->copy()->startOfDay(), $rangeEnd->copy()->endOfDay())) {
+                    $events[] = [
+                        'id' => "stage_client_{$stage->id}",
+                        'raw_id' => $stage->id,
+                        'title' => "Batas Respon Klien: {$stage->name} ({$project->name})",
+                        'description' => "Batas maksimal diskusi & respon klien ({$project->client_name}) untuk tahapan {$stage->name}.",
+                        'location' => $project->location ?: 'Asistensi Klien',
+                        'type' => 'asistensi',
+                        'start_at' => $stage->client_response_date->copy()->setTime(15, 0)->toIso8601String(),
+                        'end_at' => $stage->client_response_date->copy()->setTime(16, 0)->toIso8601String(),
+                        'date' => $stage->client_response_date->format('Y-m-d'),
+                        'time' => '15:00',
+                        'end_time' => '16:00',
+                        'is_all_day' => false,
+                        'is_virtual' => true,
+                        'project_id' => $project->id,
+                        'project_name' => $project->name,
+                        'creator_name' => 'Timeline Proyek',
+                        'participants' => $participants,
+                    ];
+                }
+
+                return $events;
+            });
+
         $allEvents = collect($calendarEvents->all())
             ->concat($projectDeadlines->all())
+            ->concat($stageDeadlines->all())
             ->concat($siteVisits->all());
 
         if ($filterType && $filterType !== 'all') {

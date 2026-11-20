@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import { ArrowUpRight, CalendarClock, MapPin } from 'lucide-react';
-import { currentUser, projects as fallbackProjects, type ProjectCategory, type Role } from '@/lib/studio-data';
+import { type Role } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
 import { AvatarStack, type AvatarMemberItem } from './member-avatar';
 
-const filters: ('Semua' | ProjectCategory)[] = ['Semua', 'Residensial', 'Komersial', 'Interior'];
-
 export const categoryStyle: Record<string, string> = {
+    'Paket 1': 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+    'Paket 2': 'bg-sky-50 text-sky-800 ring-sky-200',
+    'Paket 3': 'bg-amber-50 text-amber-800 ring-amber-200',
+    'Interior Design Package': 'bg-purple-50 text-purple-800 ring-purple-200',
+    'Custom / Khusus': 'bg-stone-100 text-stone-800 ring-stone-300',
     Residensial: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
     Komersial: 'bg-stone-100 text-stone-800 ring-stone-300',
     Interior: 'bg-accent text-accent-foreground ring-primary/25',
@@ -36,46 +39,41 @@ export function ProjectGallery({ role }: { role: Role }) {
     const dbProjects = pageProps.projects;
     const authUserId = pageProps.auth?.user?.id;
 
-    const [filter, setFilter] = useState<(typeof filters)[number]>('Semua');
+    const [filter, setFilter] = useState<string>('Semua');
 
-    const normalizedProjects: UnifiedProjectCardData[] =
-        dbProjects && dbProjects.length > 0
-            ? dbProjects
-            : fallbackProjects.map((p) => ({
-                  id: p.id,
-                  name: p.title,
-                  client_name: p.client,
-                  location: p.location,
-                  category: p.category,
-                  phase: p.phase,
-                  cover_image_url: p.cover,
-                  progress_percent: p.progress,
-                  days_left: p.daysLeft,
-                  team: p.team,
-              }));
+    const normalizedProjects: UnifiedProjectCardData[] = dbProjects ?? [];
 
-    const scoped =
+    const scopedAll =
         role === 'admin'
             ? normalizedProjects
             : normalizedProjects.filter((p) => {
                   if (p.members && authUserId) {
                       return p.members.some((m) => Number(m.id) === Number(authUserId));
                   }
-                  if (p.team) {
-                      return p.team.includes(currentUser[role].id);
-                  }
-                  return true;
+                  return false;
               });
 
+    const scoped = scopedAll.slice(0, 4);
+
+    const filters = ['Semua', ...Array.from(new Set(scoped.map((p) => p.category).filter(Boolean)))];
     const visible = filter === 'Semua' ? scoped : scoped.filter((p) => p.category === filter);
 
     return (
         <section aria-labelledby="projects-title" className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h2 id="projects-title" className="text-base font-semibold tracking-tight">
-                        {role === 'admin' ? 'Galeri Proyek Studio' : 'Proyek Saya'}
-                    </h2>
+                    <div className="flex items-center gap-2.5">
+                        <h2 id="projects-title" className="text-base font-semibold tracking-tight">
+                            {role === 'admin' ? 'Galeri Proyek Studio' : 'Proyek Saya'}
+                        </h2>
+                        <Link
+                            href={route('projects.index')}
+                            className="inline-flex items-center gap-0.5 text-xs font-semibold text-[#46797b] hover:underline"
+                        >
+                            <span>Lihat Semua</span>
+                            <ArrowUpRight className="size-3.5" />
+                        </Link>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                         {scoped.length} proyek aktif · diurutkan berdasarkan deadline terdekat
                     </p>

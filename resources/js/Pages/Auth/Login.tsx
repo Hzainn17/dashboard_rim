@@ -18,6 +18,7 @@ import {
 import { FormEventHandler, useEffect, useState } from 'react';
 
 interface PortfolioSlide {
+    id?: number;
     src: string;
     title: string;
     category: string;
@@ -25,40 +26,13 @@ interface PortfolioSlide {
     caption: string;
 }
 
-const PORTFOLIO_SLIDES: PortfolioSlide[] = [
-    {
-        src: '/project-covers/villa-lembang.png',
-        title: 'Villa Kayu & Batu Alam Lembang',
-        category: 'Residensial & Resort',
-        location: 'Bandung Barat, Jawa Barat',
-        caption:
-            'Harmoni arsitektur tropis modern dengan bukaan alami dan material lokal.',
-    },
-    {
-        src: '/project-covers/rumah-tropis.png',
-        title: 'Rumah Tropis Kontemporer',
-        category: 'Hunian Privat',
-        location: 'Jakarta Selatan',
-        caption:
-            'Sirkulasi silang optimal dengan tata cahaya alami sepanjang hari.',
-    },
-    {
-        src: '/project-covers/kantor-sudirman.png',
-        title: 'Gedung Kantor & Ruang Komersial',
-        category: 'Komersial & Perkantoran',
-        location: 'SCBD Sudirman, Jakarta',
-        caption:
-            'Fasad kaca berlapis kisi aluminium untuk efisiensi energi maksimal.',
-    },
-    {
-        src: '/project-covers/interior-kafe.png',
-        title: 'Interior Kafe & Ruang Kolaborasi',
-        category: 'Desain Interior',
-        location: 'Kemang, Jakarta Selatan',
-        caption:
-            'Nuansa hangat kayu alami berpadu pencahayaan ambient yang intim.',
-    },
-];
+const DEFAULT_FALLBACK_SLIDE: PortfolioSlide = {
+    src: '/project-covers/rumah-tropis.png',
+    title: 'RIM Studio Arsitektur',
+    category: 'Arsitektur & Interior',
+    location: 'Bandung, Indonesia',
+    caption: 'Ruang kerja terpadu tim arsitek, desain, dan konstruksi.',
+};
 
 const STUDIO_DIVISIONS = [
     'Perencanaan',
@@ -70,10 +44,13 @@ const STUDIO_DIVISIONS = [
 export default function Login({
     status,
     canResetPassword,
+    portfolios = [],
 }: {
     status?: string;
     canResetPassword: boolean;
+    portfolios?: PortfolioSlide[];
 }) {
+    const slides = portfolios.length > 0 ? portfolios : [DEFAULT_FALLBACK_SLIDE];
     const { studio } = usePage<PageProps>().props;
     const companyLogo = studio?.logo_url || '/rim-projects-logo.png';
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -86,21 +63,19 @@ export default function Login({
     const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
+        if (slides.length <= 1) return;
         const timer = window.setInterval(() => {
-            setActiveSlide((prev) => (prev + 1) % PORTFOLIO_SLIDES.length);
+            setActiveSlide((prev) => (prev + 1) % slides.length);
         }, 4500);
         return () => window.clearInterval(timer);
-    }, []);
+    }, [slides.length]);
 
     const goPrev = () => {
-        setActiveSlide(
-            (prev) =>
-                (prev - 1 + PORTFOLIO_SLIDES.length) % PORTFOLIO_SLIDES.length,
-        );
+        setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
     };
 
     const goNext = () => {
-        setActiveSlide((prev) => (prev + 1) % PORTFOLIO_SLIDES.length);
+        setActiveSlide((prev) => (prev + 1) % slides.length);
     };
 
     const submit: FormEventHandler = (e) => {
@@ -111,7 +86,7 @@ export default function Login({
         });
     };
 
-    const currentSlide = PORTFOLIO_SLIDES[activeSlide];
+    const currentSlide = slides[activeSlide] ?? slides[0];
 
     return (
         <>
@@ -122,7 +97,7 @@ export default function Login({
                     {/* Showcase Portfolio Slider */}
                     <div className="relative md:col-span-6 lg:col-span-7">
                         <div className="relative h-64 w-full overflow-hidden bg-stone-900 sm:h-80 md:h-full md:min-h-[600px] md:rounded-3xl md:border md:border-border/60 md:shadow-lg">
-                            {PORTFOLIO_SLIDES.map((slide, index) => (
+                            {slides.map((slide, index) => (
                                 <img
                                     key={slide.src}
                                     src={slide.src}
@@ -184,7 +159,7 @@ export default function Login({
 
                                 {/* Progress Dots */}
                                 <div className="mt-4 flex items-center gap-2">
-                                    {PORTFOLIO_SLIDES.map((slide, idx) => (
+                                    {slides.map((slide, idx) => (
                                         <button
                                             key={slide.src}
                                             type="button"

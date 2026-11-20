@@ -7,7 +7,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['project_id', 'name', 'order', 'status'])]
+#[Fillable([
+    'project_id',
+    'name',
+    'order',
+    'status',
+    'update_design_date',
+    'client_response_date',
+    'output_notes',
+    'duration_workdays',
+])]
 class ProjectStage extends Model
 {
     /**
@@ -19,6 +28,9 @@ class ProjectStage extends Model
     {
         return [
             'order' => 'integer',
+            'update_design_date' => 'date',
+            'client_response_date' => 'date',
+            'duration_workdays' => 'integer',
         ];
     }
 

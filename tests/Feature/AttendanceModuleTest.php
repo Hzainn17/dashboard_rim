@@ -9,6 +9,7 @@ use App\Models\Overtime;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -444,5 +445,102 @@ class AttendanceModuleTest extends TestCase
             'compensation_type' => 'day_off_exchange',
             'compensation_status' => 'pending',
         ]);
+    }
+
+    public function test_site_visit_requires_photo_and_project_while_notes_are_optional(): void
+    {
+        OfficeSetting::current();
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        // Missing photo and project -> validation errors
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'site_visit',
+            ])
+            ->assertSessionHasErrors(['site_visit_project_id', 'site_visit_photo']);
+
+        // Project + photo without notes -> succeeds and stores photo URL
+        $photo = UploadedFile::fake()->image('site.jpg', 640, 480);
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'site_visit',
+                'site_visit_project_id' => $project->id,
+                'site_visit_photo' => $photo,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $att = Attendance::query()->where('user_id', $employee->id)->firstOrFail();
+        $this->assertSame('site_visit', $att->mode);
+        $this->assertSame($project->id, $att->site_visit_project_id);
+        $this->assertNull($att->notes);
+        $this->assertNotNull($att->site_visit_photo_url);
+        $this->assertFileExists(public_path(ltrim($att->site_visit_photo_url, '/')));
+    }
+
+    public function test_office_overtime_blocks_outside_radius_while_site_visit_overtime_is_allowed(): void
+    {
+        $setting = OfficeSetting::current();
+        $setting->update([
+            'latitude' => -6.200000,
+            'longitude' => 106.816666,
+            'radius_meters' => 100,
+        ]);
+
+        $admin = User::factory()->admin()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        // 1. Office mode employee outside radius -> blocked
+        $officeEmp = User::factory()->create();
+        Attendance::query()->create([
+            'user_id' => $officeEmp->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => Carbon::today()->setTime(8, 0),
+            'check_out_at' => Carbon::today()->setTime(17, 0),
+            'target_work_minutes' => 540,
+            'actual_work_minutes' => 540,
+            'status' => 'hadir',
+        ]);
+
+        $this->actingAs($officeEmp)
+            ->post('/attendance/overtime/start', [
+                'project_id' => $project->id,
+                'task_description' => 'Coba lembur dari rumah',
+                'latitude' => -6.250000,
+                'longitude' => 106.850000,
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, Overtime::query()->where('user_id', $officeEmp->id)->count());
+
+        // 2. Site visit employee outside office radius -> allowed (pending admin approval)
+        $siteEmp = User::factory()->create();
+        Attendance::query()->create([
+            'user_id' => $siteEmp->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'site_visit',
+            'site_visit_project_id' => $project->id,
+            'check_in_at' => Carbon::today()->setTime(8, 0),
+            'check_out_at' => Carbon::today()->setTime(17, 0),
+            'target_work_minutes' => 540,
+            'actual_work_minutes' => 540,
+            'status' => 'site_visit',
+        ]);
+
+        $this->actingAs($siteEmp)
+            ->post('/attendance/overtime/start', [
+                'project_id' => $project->id,
+                'task_description' => 'Lembur pengawasan cor lapangan',
+                'latitude' => -6.250000,
+                'longitude' => 106.850000,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, Overtime::query()->where('user_id', $siteEmp->id)->count());
     }
 }

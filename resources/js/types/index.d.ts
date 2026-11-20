@@ -144,6 +144,9 @@ export type PageProps<
             elapsed_seconds?: number;
             cooldown_remaining_seconds?: number;
             target_work_minutes?: number;
+            site_visit_project_id?: number | null;
+            site_visit_photo_url?: string | null;
+            notes?: string | null;
         } | null;
         activeOvertime?: {
             id: number;

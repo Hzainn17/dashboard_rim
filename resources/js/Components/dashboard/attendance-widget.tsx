@@ -17,15 +17,14 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { useOfficeGps } from '@/lib/geolocation';
-import { projects } from '@/lib/studio-data';
+import { CameraCaptureModal } from '@/Components/CameraCaptureModal';
 import { cn } from '@/lib/utils';
 import { formatClock, formatCooldown, formatDuration, useAttendance, type AttendanceMode } from './attendance-context';
 
 const TARGET_MS = 9 * 60 * 60 * 1000;
-const projectItems = projects.map((p) => ({ value: p.id, label: p.title }));
 
 export function AttendanceWidget() {
-    const { auth, officeSetting } = usePage<
+    const { auth, officeSetting, projects: dbProjects = [] } = usePage<
         PageProps & {
             officeSetting?: {
                 office_name: string;
@@ -33,8 +32,17 @@ export function AttendanceWidget() {
                 longitude: number;
                 radius_meters: number;
             };
+            projects?: Array<{
+                id: number;
+                name: string;
+                location?: string | null;
+            }>;
         }
     >().props;
+    const projectItems = dbProjects.map((p) => ({
+        value: String(p.id),
+        label: p.location ? `${p.name} (${p.location})` : p.name,
+    }));
     const gps = useOfficeGps(
         Number(officeSetting?.latitude ?? -6.2087634),
         Number(officeSetting?.longitude ?? 106.845599),
@@ -66,7 +74,18 @@ export function AttendanceWidget() {
         setSiteProject,
     } = useAttendance();
     const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [cameraOpen, setCameraOpen] = useState(false);
+    const [siteNotes, setSiteNotes] = useState(auth?.todayAttendance?.notes ?? '');
     const [earlyCheckoutModal, setEarlyCheckoutModal] = useState(false);
+
+    useEffect(() => {
+        if (auth?.todayAttendance?.notes != null) {
+            setSiteNotes(auth.todayAttendance.notes);
+        }
+    }, [auth?.todayAttendance?.notes]);
+
+    const displayedPhotoUrl = photoUrl || auth?.todayAttendance?.site_visit_photo_url || null;
 
     useEffect(() => {
         return () => {
@@ -81,7 +100,7 @@ export function AttendanceWidget() {
     const progress = Math.min(100, (elapsed / TARGET_MS) * 100);
     const overtime = Math.max(0, elapsed - TARGET_MS);
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
-    const siteReady = mode === 'office' || (!!siteProject && !!photoUrl);
+    const siteReady = mode === 'office' || (!!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url));
 
     const handleCheckOutClick = () => {
         if (elapsed < TARGET_MS) {
@@ -241,13 +260,16 @@ export function AttendanceWidget() {
                             </Select>
                         </div>
 
-                        {photoUrl ? (
+                        {displayedPhotoUrl ? (
                             <div className="relative overflow-hidden rounded-lg border">
-                                <img src={photoUrl} alt="Foto bukti lokasi site visit" className="h-28 w-full object-cover" />
+                                <img src={displayedPhotoUrl} alt="Foto bukti lokasi site visit" className="h-28 w-full object-cover" />
                                 {!isWorking && (
                                     <button
                                         type="button"
-                                        onClick={() => setPhotoUrl(null)}
+                                        onClick={() => {
+                                            setPhotoUrl(null);
+                                            setPhotoFile(null);
+                                        }}
                                         className="absolute top-2 right-2 rounded-md bg-background/90 p-1 text-foreground shadow-sm outline-none hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/50"
                                     >
                                         <X className="size-3.5" aria-hidden="true" />
@@ -256,22 +278,45 @@ export function AttendanceWidget() {
                                 )}
                             </div>
                         ) : (
-                            <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/40 px-4 py-5 text-center transition-colors hover:border-primary/50 hover:bg-accent/40">
-                                <Camera className="size-5 text-muted-foreground" aria-hidden="true" />
-                                <span className="text-sm font-medium">Ambil foto lokasi</span>
-                                <span className="text-xs text-muted-foreground">Selfie di lokasi proyek sebagai bukti kehadiran</span>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    className="sr-only"
-                                    onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) setPhotoUrl(URL.createObjectURL(file));
-                                    }}
-                                />
-                            </label>
+                            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/40 px-4 py-4 text-center">
+                                <div className="flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCameraOpen(true)}
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                                    >
+                                        <Camera className="size-3.5" aria-hidden="true" />
+                                        Kamera Laptop / HP
+                                    </button>
+                                    <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium hover:bg-muted">
+                                        Lampirkan Foto
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="sr-only"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    setPhotoFile(file);
+                                                    setPhotoUrl(URL.createObjectURL(file));
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                                <span className="text-[11px] text-muted-foreground">
+                                    Wajib foto bukti lokasi proyek (kamera / lampiran)
+                                </span>
+                            </div>
                         )}
+                        <input
+                            type="text"
+                            disabled={isWorking}
+                            value={siteNotes}
+                            onChange={(e) => setSiteNotes(e.target.value)}
+                            placeholder="Keterangan kegiatan (opsional)"
+                            className="h-9 w-full rounded-lg border bg-background px-3 text-xs outline-none focus-visible:border-ring"
+                        />
                         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                             <MapPin className="size-3" aria-hidden="true" />
                             Lokasi GPS akan direkam otomatis saat check-in
@@ -415,6 +460,9 @@ export function AttendanceWidget() {
                                     latitude: gps.latitude,
                                     longitude: gps.longitude,
                                     distance_meters: gps.distanceMeters,
+                                    site_visit_project_id: mode === 'site' ? siteProject : null,
+                                    site_visit_photo: mode === 'site' ? photoFile : null,
+                                    notes: mode === 'site' ? siteNotes : null,
                                 })
                             }
                             disabled={!siteReady}
@@ -477,6 +525,15 @@ export function AttendanceWidget() {
                     </div>
                 </div>
             )}
+
+            <CameraCaptureModal
+                open={cameraOpen}
+                onClose={() => setCameraOpen(false)}
+                onCapture={(file, preview) => {
+                    setPhotoFile(file);
+                    setPhotoUrl(preview);
+                }}
+            />
         </section>
     );
 }

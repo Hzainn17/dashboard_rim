@@ -25,6 +25,8 @@ class ProjectTask extends Model
     protected function casts(): array
     {
         return [
+            'stage_id' => 'integer',
+            'assignee_id' => 'integer',
             'due_date' => 'date',
             'completed_at' => 'datetime',
             'order_column' => 'integer',

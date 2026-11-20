@@ -3,15 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\OfficeSetting;
 use App\Models\Project;
+use App\Models\ProjectClientBrief;
 use App\Models\ProjectStage;
 use App\Models\ProjectTask;
 use App\Models\ProjectUpdate;
 use App\Models\User;
+use App\Services\ClientBriefTemplate;
+use App\Services\ProjectPackageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -53,7 +60,10 @@ class ProjectController extends Controller
         }
 
         if ($category && $category !== 'all') {
-            $query->where('category', $category);
+            $query->where(function ($q) use ($category): void {
+                $q->where('package_name', $category)
+                    ->orWhere('category', $category);
+            });
         }
 
         if ($status && $status !== 'all') {
@@ -97,7 +107,12 @@ class ProjectController extends Controller
                     'client_name' => $p->client_name,
                     'client_phone' => $p->client_phone,
                     'location' => $p->location,
-                    'category' => $p->category ?: 'Residensial',
+                    'category' => $p->package_name ?: ($p->category ?: 'Paket 1'),
+                    'package_name' => $p->package_name ?: ($p->category ?: 'Paket 1'),
+                    'package_addons' => $p->package_addons ?? [],
+                    'building_area' => $p->building_area,
+                    'estimated_budget' => $p->estimated_budget,
+                    'custom_scope_notes' => $p->custom_scope_notes,
                     'phase' => $phase,
                     'cover_image_url' => $p->cover_image_url ?: '/project-covers/rumah-tropis.png',
                     'drive_url' => $p->drive_url,
@@ -135,13 +150,49 @@ class ProjectController extends Controller
                 'photo_url' => $u->photo_url,
             ]);
 
-        $categories = [
-            'Residensial',
-            'Komersial',
-            'Interior',
-            'Villa & Resort',
-            'Masterplan & Lanskap',
-        ];
+        $categories = collect(ProjectPackageService::packages())->pluck('id')->all();
+
+        $timelineQuery = Project::query()
+            ->with([
+                'members:id,name',
+                'stages' => fn ($q) => $q->orderBy('order'),
+            ])
+            ->whereIn('status', ['planning', 'ongoing', 'review'])
+            ->orderBy('start_date');
+
+        if (! $isAdmin || $tab === 'my') {
+            $timelineQuery->where(function ($q) use ($user): void {
+                $q->where('owner_id', $user->id)
+                    ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));
+            });
+        }
+
+        $timelineProjects = $timelineQuery
+            ->get()
+            ->map(function (Project $p): array {
+                $lead = $p->members->first(fn (User $u) => str_contains(strtolower((string) ($u->pivot->role_in_project ?? '')), 'lead'))
+                    ?? $p->members->first();
+                $activeStage = $p->stages->firstWhere('status', 'active') ?? $p->stages->first();
+
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'client_name' => $p->client_name,
+                    'pic' => $lead ? explode(' ', trim($lead->name))[0] : '-',
+                    'active_stage' => $activeStage?->name ?? 'Perencanaan',
+                    'status' => $p->status,
+                    'start_date' => $p->start_date?->format('Y-m-d'),
+                    'due_date' => $p->due_date?->format('Y-m-d'),
+                    'stages' => $p->stages->map(fn (ProjectStage $s) => [
+                        'id' => $s->id,
+                        'name' => $s->name,
+                        'status' => $s->status,
+                        'update_design_date' => $s->update_design_date?->format('Y-m-d'),
+                        'client_response_date' => $s->client_response_date?->format('Y-m-d'),
+                    ])->values(),
+                ];
+            })
+            ->values();
 
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
@@ -153,7 +204,10 @@ class ProjectController extends Controller
                 'tab' => $tab,
             ],
             'categories' => $categories,
+            'packages' => ProjectPackageService::packages(),
+            'addons' => ProjectPackageService::addons(),
             'teamMembers' => $teamMembers,
+            'timelineProjects' => $timelineProjects,
         ]);
     }
 
@@ -172,7 +226,14 @@ class ProjectController extends Controller
             'client_name' => ['required', 'string', 'max:255'],
             'client_phone' => ['nullable', 'string', 'max:30'],
             'location' => ['nullable', 'string', 'max:255'],
-            'category' => ['nullable', 'string', 'max:50'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'package_name' => ['nullable', 'string', 'max:100'],
+            'package_addons' => ['nullable', 'array'],
+            'package_addons.*' => ['string', 'max:150'],
+            'building_area' => ['nullable', 'numeric', 'min:0'],
+            'estimated_budget' => ['nullable', 'integer', 'min:0'],
+            'custom_scope_notes' => ['nullable', 'string', 'max:2000'],
+            'cover_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'cover_image_url' => ['nullable', 'string', 'max:500'],
             'drive_url' => ['nullable', 'url', 'max:500'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -186,17 +247,52 @@ class ProjectController extends Controller
             'stages.*' => ['string', 'max:100'],
         ]);
 
+        $packageName = ! empty($validated['package_name'])
+            ? $validated['package_name']
+            : (! empty($validated['category']) ? $validated['category'] : 'Paket 1');
+
+        $startDate = ! empty($validated['start_date'])
+            ? Carbon::parse($validated['start_date'])
+            : Carbon::today();
+
+        // Build stage list with official RIM Projects timeline dates
+        $stageNames = ! empty($validated['stages'])
+            ? array_filter($validated['stages'])
+            : collect(ProjectPackageService::packages())
+                ->firstWhere('id', $packageName)['default_stages']
+                ?? ['Tahap Konseptual V1', 'Tahap Konseptual V2', 'Tahap Pengembangan V1', 'Tahap Pengembangan V2'];
+
+        $builtStages = ProjectPackageService::buildStagesWithTimeline($startDate, array_values($stageNames));
+        $lastStageDate = ! empty($builtStages)
+            ? end($builtStages)['client_response_date']
+            : null;
+
+        $coverImageUrl = ! empty($validated['cover_image_url']) ? $validated['cover_image_url'] : '/project-covers/rumah-tropis.png';
+        if ($request->hasFile('cover_image')) {
+            $dir = public_path('uploads/project-covers');
+            File::ensureDirectoryExists($dir);
+            $file = $request->file('cover_image');
+            $filename = 'cover-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $file->move($dir, $filename);
+            $coverImageUrl = "/uploads/project-covers/{$filename}";
+        }
+
         $project = Project::query()->create([
             'name' => $validated['name'],
             'client_name' => $validated['client_name'],
             'client_phone' => $validated['client_phone'] ?? null,
             'location' => $validated['location'] ?? null,
-            'category' => ! empty($validated['category']) ? $validated['category'] : 'Residensial',
-            'cover_image_url' => ! empty($validated['cover_image_url']) ? $validated['cover_image_url'] : '/project-covers/rumah-tropis.png',
+            'category' => $packageName,
+            'package_name' => $packageName,
+            'package_addons' => $validated['package_addons'] ?? [],
+            'building_area' => $validated['building_area'] ?? null,
+            'estimated_budget' => $validated['estimated_budget'] ?? null,
+            'custom_scope_notes' => $validated['custom_scope_notes'] ?? null,
+            'cover_image_url' => $coverImageUrl,
             'drive_url' => $validated['drive_url'] ?? null,
             'description' => $validated['description'] ?? null,
-            'start_date' => $validated['start_date'] ?? now()->format('Y-m-d'),
-            'due_date' => $validated['due_date'] ?? null,
+            'start_date' => $startDate->format('Y-m-d'),
+            'due_date' => $validated['due_date'] ?? $lastStageDate,
             'status' => $validated['status'],
             'progress_percent' => 0,
             'owner_id' => $user->id,
@@ -220,28 +316,20 @@ class ProjectController extends Controller
             $project->members()->attach($attachData);
         }
 
-        // Create stages
-        $stageNames = ! empty($validated['stages'])
-            ? array_filter($validated['stages'])
-            : ['1. Konsep Desain & Denah', '2. Pengembangan Desain', '3. Gambar Kerja (DED)', '4. 3D Render & Visualisasi', '5. Pengawasan'];
-
-        foreach (array_values($stageNames) as $order => $stageName) {
-            $project->stages()->create([
-                'name' => $stageName,
-                'order' => $order + 1,
-                'status' => $order === 0 ? 'active' : 'pending',
-            ]);
+        // Create stages with calculated timeline
+        foreach ($builtStages as $stageData) {
+            $project->stages()->create($stageData);
         }
 
         ActivityLog::record(
             action: 'project.created',
-            description: "{$user->name} membuat proyek baru: {$project->name}",
+            description: "{$user->name} membuat proyek baru: {$project->name} ({$packageName})",
             reference: $project,
             user: $user,
         );
 
         return redirect()->route('projects.show', $project->id)
-            ->with('success', "Proyek '{$project->name}' berhasil dibuat.");
+            ->with('success', "Proyek '{$project->name}' berhasil dibuat dengan timeline {$packageName}.");
     }
 
     /**
@@ -297,13 +385,19 @@ class ProjectController extends Controller
                 'client_name' => $project->client_name,
                 'client_phone' => $project->client_phone,
                 'location' => $project->location,
-                'category' => $project->category ?: 'Residensial',
+                'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
+                'package_name' => $project->package_name ?: ($project->category ?: 'Paket 1'),
+                'package_addons' => $project->package_addons ?? [],
+                'building_area' => $project->building_area,
+                'estimated_budget' => $project->estimated_budget,
+                'custom_scope_notes' => $project->custom_scope_notes,
                 'cover_image_url' => $project->cover_image_url ?: '/project-covers/rumah-tropis.png',
                 'drive_url' => $project->drive_url,
                 'description' => $project->description,
                 'status' => $project->status,
                 'progress_percent' => $project->progress_percent,
                 'start_date' => $project->start_date?->format('Y-m-d'),
+                'start_date_formatted' => $project->start_date?->translatedFormat('d F Y'),
                 'due_date' => $project->due_date?->format('Y-m-d'),
                 'due_date_formatted' => $project->due_date?->translatedFormat('d M Y'),
                 'days_left' => $daysLeft,
@@ -326,6 +420,12 @@ class ProjectController extends Controller
                     'name' => $s->name,
                     'order' => $s->order,
                     'status' => $s->status,
+                    'update_design_date' => $s->update_design_date?->format('Y-m-d'),
+                    'update_design_date_formatted' => $s->update_design_date?->translatedFormat('d-F-Y'),
+                    'client_response_date' => $s->client_response_date?->format('Y-m-d'),
+                    'client_response_date_formatted' => $s->client_response_date?->translatedFormat('d-F-Y'),
+                    'output_notes' => $s->output_notes,
+                    'duration_workdays' => $s->duration_workdays,
                     'tasks_count' => $allTasks->where('stage_id', $s->id)->count(),
                     'done_count' => $allTasks->where('stage_id', $s->id)->where('status', 'done')->count(),
                 ])->values(),
@@ -344,6 +444,21 @@ class ProjectController extends Controller
                 ],
             ])->values(),
             'teamMembers' => $teamMembers,
+            'packages' => ProjectPackageService::packages(),
+            'addons' => ProjectPackageService::addons(),
+            'clientBrief' => (function () use ($project): array {
+                $brief = ProjectClientBrief::forProject($project);
+
+                return [
+                    'status' => $brief->status,
+                    'public_url' => route('brief.show', $brief->token),
+                    'fields' => $brief->fields ?? [],
+                    'responses' => (object) ($brief->responses ?? []),
+                    'sent_at' => $brief->sent_at?->translatedFormat('d M Y, H:i'),
+                    'submitted_at' => $brief->submitted_at?->translatedFormat('d M Y, H:i'),
+                    'field_types' => ClientBriefTemplate::fieldTypes(),
+                ];
+            })(),
         ]);
     }
 
@@ -362,7 +477,14 @@ class ProjectController extends Controller
             'client_name' => ['required', 'string', 'max:255'],
             'client_phone' => ['nullable', 'string', 'max:30'],
             'location' => ['nullable', 'string', 'max:255'],
-            'category' => ['nullable', 'string', 'max:50'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'package_name' => ['nullable', 'string', 'max:100'],
+            'package_addons' => ['nullable', 'array'],
+            'package_addons.*' => ['string', 'max:150'],
+            'building_area' => ['nullable', 'numeric', 'min:0'],
+            'estimated_budget' => ['nullable', 'integer', 'min:0'],
+            'custom_scope_notes' => ['nullable', 'string', 'max:2000'],
+            'cover_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'cover_image_url' => ['nullable', 'string', 'max:500'],
             'drive_url' => ['nullable', 'url', 'max:500'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -374,13 +496,32 @@ class ProjectController extends Controller
             'lead_id' => ['nullable', 'exists:users,id'],
         ]);
 
+        $packageName = ! empty($validated['package_name'])
+            ? $validated['package_name']
+            : (! empty($validated['category']) ? $validated['category'] : ($project->package_name ?: 'Paket 1'));
+
+        $coverImageUrl = $validated['cover_image_url'] ?? $project->cover_image_url;
+        if ($request->hasFile('cover_image')) {
+            $dir = public_path('uploads/project-covers');
+            File::ensureDirectoryExists($dir);
+            $file = $request->file('cover_image');
+            $filename = 'cover-'.Str::random(10).'.'.$file->getClientOriginalExtension();
+            $file->move($dir, $filename);
+            $coverImageUrl = "/uploads/project-covers/{$filename}";
+        }
+
         $project->update([
             'name' => $validated['name'],
             'client_name' => $validated['client_name'],
             'client_phone' => $validated['client_phone'] ?? null,
             'location' => $validated['location'] ?? null,
-            'category' => $validated['category'] ?: 'Residensial',
-            'cover_image_url' => $validated['cover_image_url'] ?? $project->cover_image_url,
+            'category' => $packageName,
+            'package_name' => $packageName,
+            'package_addons' => $validated['package_addons'] ?? $project->package_addons ?? [],
+            'building_area' => array_key_exists('building_area', $validated) ? $validated['building_area'] : $project->building_area,
+            'estimated_budget' => array_key_exists('estimated_budget', $validated) ? $validated['estimated_budget'] : $project->estimated_budget,
+            'custom_scope_notes' => array_key_exists('custom_scope_notes', $validated) ? $validated['custom_scope_notes'] : $project->custom_scope_notes,
+            'cover_image_url' => $coverImageUrl,
             'drive_url' => $validated['drive_url'] ?? null,
             'description' => $validated['description'] ?? null,
             'start_date' => $validated['start_date'] ?? $project->start_date,
@@ -611,17 +752,113 @@ class ProjectController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:100'],
+            'status' => ['nullable', Rule::in(['pending', 'active', 'completed'])],
+            'update_design_date' => ['nullable', 'date'],
+            'client_response_date' => ['nullable', 'date'],
+            'output_notes' => ['nullable', 'string', 'max:2000'],
+            'duration_workdays' => ['nullable', 'integer', 'min:1', 'max:365'],
         ]);
 
         $maxOrder = (int) $project->stages()->max('order');
 
-        $project->stages()->create([
+        $updateDesignDate = $validated['update_design_date'] ?? null;
+        $clientResponseDate = $validated['client_response_date']
+            ?? ($updateDesignDate ? Carbon::parse($updateDesignDate)->addDays(3)->format('Y-m-d') : null);
+
+        $stage = $project->stages()->create([
             'name' => $validated['name'],
             'order' => $maxOrder + 1,
-            'status' => 'pending',
+            'status' => $validated['status'] ?? 'pending',
+            'update_design_date' => $updateDesignDate,
+            'client_response_date' => $clientResponseDate,
+            'output_notes' => $validated['output_notes'] ?? null,
+            'duration_workdays' => $validated['duration_workdays'] ?? null,
         ]);
 
-        return redirect()->back()->with('success', "Tahapan '{$validated['name']}' berhasil ditambahkan.");
+        ActivityLog::record(
+            action: 'project.stage_created',
+            description: "{$request->user()->name} menambahkan tahapan '{$stage->name}' pada {$project->name}",
+            reference: $project,
+            user: $request->user(),
+        );
+
+        return redirect()->back()->with('success', "Tahapan '{$validated['name']}' berhasil ditambahkan ke timeline.");
+    }
+
+    /**
+     * Update a stage & its timeline (/projects/{project}/stages/{stage}).
+     */
+    public function updateStage(Request $request, Project $project, ProjectStage $stage): RedirectResponse
+    {
+        if ($stage->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'status' => ['required', Rule::in(['pending', 'active', 'completed'])],
+            'update_design_date' => ['nullable', 'date'],
+            'client_response_date' => ['nullable', 'date'],
+            'output_notes' => ['nullable', 'string', 'max:2000'],
+            'duration_workdays' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'order' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $updateDesignDate = $validated['update_design_date'] ?? null;
+        $clientResponseDate = $validated['client_response_date']
+            ?? ($updateDesignDate ? Carbon::parse($updateDesignDate)->addDays(3)->format('Y-m-d') : null);
+
+        $stage->update([
+            'name' => $validated['name'],
+            'status' => $validated['status'],
+            'update_design_date' => $updateDesignDate,
+            'client_response_date' => $clientResponseDate,
+            'output_notes' => $validated['output_notes'] ?? null,
+            'duration_workdays' => $validated['duration_workdays'] ?? $stage->duration_workdays,
+            'order' => $validated['order'] ?? $stage->order,
+        ]);
+
+        ActivityLog::record(
+            action: 'project.stage_updated',
+            description: "{$request->user()->name} memperbarui jadwal tahapan '{$stage->name}' pada {$project->name}",
+            reference: $project,
+            user: $request->user(),
+        );
+
+        return redirect()->back()->with('success', "Timeline tahapan '{$stage->name}' berhasil diperbarui.");
+    }
+
+    /**
+     * Reorder project stages (/projects/{project}/stages/reorder).
+     */
+    public function reorderStages(Request $request, Project $project): RedirectResponse
+    {
+        $validated = $request->validate([
+            'stage_ids' => ['required', 'array', 'min:1'],
+            'stage_ids.*' => ['integer', 'exists:project_stages,id'],
+        ]);
+
+        foreach (array_values($validated['stage_ids']) as $index => $stageId) {
+            $project->stages()
+                ->where('id', $stageId)
+                ->update(['order' => $index + 1]);
+        }
+
+        return redirect()->back()->with('success', 'Urutan tahapan timeline berhasil diperbarui.');
+    }
+
+    /**
+     * Printable official RIM Projects timeline document (/projects/{project}/timeline/print).
+     */
+    public function printTimeline(Project $project): View
+    {
+        $project->load(['stages' => fn ($q) => $q->orderBy('order')]);
+        $office = OfficeSetting::current();
+
+        return view('projects.timeline-print', [
+            'project' => $project,
+            'office' => $office,
+        ]);
     }
 
     /**

@@ -1,4 +1,4 @@
-import { getAvatarTone, teamById } from '@/lib/studio-data';
+import { getAvatarTone } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
 
 export type AvatarMemberItem = {
@@ -29,12 +29,11 @@ export function MemberAvatar({
     title?: string;
     className?: string;
 }) {
-    const staticMember = typeof id === 'string' ? teamById[id] : undefined;
-    const displayName = name || staticMember?.name;
+    const displayName = name;
     if (!displayName) return null;
 
-    const initials = staticMember?.initials || getInitials(displayName);
-    const tone = staticMember?.tone || getAvatarTone(id, displayName);
+    const initials = getInitials(displayName);
+    const tone = getAvatarTone(id, displayName);
 
     return (
         <span

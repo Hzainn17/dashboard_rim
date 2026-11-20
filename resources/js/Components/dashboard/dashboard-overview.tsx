@@ -1,6 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { currentUser, type Role } from '@/lib/studio-data';
+import { type Role } from '@/lib/studio-data';
 import { PageProps } from '@/types';
 import { ActivityFeed, StudioAgenda } from './agenda-activity';
 import { useAttendance } from './attendance-context';
@@ -23,8 +23,7 @@ function greeting(date: Date | null) {
 export function DashboardOverview({ role }: { role: Role }) {
     const { auth, flash } = usePage<PageProps>().props;
     const { now } = useAttendance();
-    const fallbackUser = currentUser[role];
-    const displayName = auth?.user?.name || fallbackUser.name;
+    const displayName = auth?.user?.name || 'Tim Studio';
     const dateLabel = now
         ? new Intl.DateTimeFormat('id-ID', {
               timeZone: 'Asia/Jakarta',

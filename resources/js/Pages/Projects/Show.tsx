@@ -4,16 +4,21 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     AlertCircle,
     AlertTriangle,
+    ArrowDown,
     ArrowLeft,
+    ArrowUp,
     Calendar,
+    CalendarDays,
     Check,
     CheckCircle2,
+    ChevronLeft,
     ChevronRight,
     Clock,
     Edit3,
     ExternalLink,
     FileText,
     FolderKanban,
+    GripVertical,
     HardHat,
     Layers,
     MapPin,
@@ -21,6 +26,7 @@ import {
     MoreHorizontal,
     Phone,
     Plus,
+    Printer,
     Send,
     Sparkles,
     Trash2,
@@ -29,6 +35,10 @@ import {
     X,
 } from 'lucide-react';
 import { AppShell } from '@/Components/dashboard/app-shell';
+import {
+    ProjectBriefTab,
+    type ProjectBriefData,
+} from '@/Components/client-brief/ProjectBriefTab';
 import { PageProps } from '@/types';
 import { cn } from '@/lib/utils';
 import { getAvatarTone } from '@/lib/studio-data';
@@ -47,6 +57,12 @@ interface ProjectStageItem {
     name: string;
     order: number;
     status: 'pending' | 'active' | 'completed';
+    update_design_date?: string | null;
+    update_design_date_formatted?: string | null;
+    client_response_date?: string | null;
+    client_response_date_formatted?: string | null;
+    output_notes?: string | null;
+    duration_workdays?: number | null;
     tasks_count: number;
     done_count: number;
 }
@@ -58,12 +74,18 @@ interface ProjectDetailData {
     client_phone?: string | null;
     location?: string | null;
     category: string;
+    package_name?: string | null;
+    package_addons?: string[];
+    building_area?: number | null;
+    estimated_budget?: number | null;
+    custom_scope_notes?: string | null;
     cover_image_url: string;
     drive_url?: string | null;
     description?: string | null;
     status: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
     progress_percent: number;
     start_date?: string | null;
+    start_date_formatted?: string | null;
     due_date?: string | null;
     due_date_formatted?: string | null;
     days_left?: number | null;
@@ -134,6 +156,7 @@ interface Props extends PageProps {
     kanban: KanbanColumns;
     updates: ProjectUpdateItem[];
     teamMembers: TeamMemberOption[];
+    clientBrief: ProjectBriefData;
 }
 
 const statusOptions: { value: ProjectDetailData['status']; label: string }[] = [
@@ -181,7 +204,7 @@ const kanbanColumnConfig = {
     },
 };
 
-export default function ProjectShow({ auth, project, kanban, updates, teamMembers }: Props) {
+export default function ProjectShow({ auth, project, kanban, updates, teamMembers, clientBrief }: Props) {
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
     const isAdmin = auth.user.role === 'admin';
     const isOwnerOrLead =
@@ -191,7 +214,135 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
             (m) => m.id === auth.user.id && m.role_in_project.toLowerCase().includes('lead')
         );
 
-    const [activeTab, setActiveTab] = useState<'kanban' | 'stages' | 'updates'>('kanban');
+    const [activeTab, setActiveTab] = useState<'kanban' | 'stages' | 'timeline' | 'updates' | 'brief'>('kanban');
+
+    // Timeline & Calendar state
+    const [isStageModalOpen, setIsStageModalOpen] = useState(false);
+    const [editingStage, setEditingStage] = useState<ProjectStageItem | null>(null);
+    const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+        const firstDatedStage = project.stages.find((s) => s.update_design_date);
+        if (firstDatedStage?.update_design_date) {
+            return new Date(firstDatedStage.update_design_date + 'T00:00:00');
+        }
+        return project.start_date ? new Date(project.start_date + 'T00:00:00') : new Date();
+    });
+
+    const stageTimelineForm = useForm({
+        name: '',
+        status: 'pending' as ProjectStageItem['status'],
+        update_design_date: '',
+        client_response_date: '',
+        duration_workdays: '' as string | number,
+        output_notes: '',
+    });
+
+    const openCreateStageModal = () => {
+        setEditingStage(null);
+        stageTimelineForm.setData({
+            name: '',
+            status: 'pending',
+            update_design_date: '',
+            client_response_date: '',
+            duration_workdays: 7,
+            output_notes: '',
+        });
+        setIsStageModalOpen(true);
+    };
+
+    const openEditStageModal = (stage: ProjectStageItem) => {
+        setEditingStage(stage);
+        stageTimelineForm.setData({
+            name: stage.name,
+            status: stage.status,
+            update_design_date: stage.update_design_date || '',
+            client_response_date: stage.client_response_date || '',
+            duration_workdays: stage.duration_workdays ?? '',
+            output_notes: stage.output_notes || '',
+        });
+        setIsStageModalOpen(true);
+    };
+
+    const handleStageUpdateDesignDateChange = (val: string) => {
+        let nextClientDate = stageTimelineForm.data.client_response_date;
+        if (val) {
+            const d = new Date(val + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() + 3);
+            nextClientDate = d.toISOString().split('T')[0];
+        }
+        stageTimelineForm.setData((prev) => ({
+            ...prev,
+            update_design_date: val,
+            client_response_date: nextClientDate,
+        }));
+    };
+
+    const handleStageTimelineSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingStage) {
+            stageTimelineForm.put(
+                route('projects.stages.update', { project: project.id, stage: editingStage.id }),
+                {
+                    preserveScroll: true,
+                    onSuccess: () => setIsStageModalOpen(false),
+                }
+            );
+        } else {
+            stageTimelineForm.post(route('projects.stages.store', project.id), {
+                preserveScroll: true,
+                onSuccess: () => setIsStageModalOpen(false),
+            });
+        }
+    };
+
+    const handleQuickStageStatus = (stage: ProjectStageItem, nextStatus: ProjectStageItem['status']) => {
+        router.put(
+            route('projects.stages.update', { project: project.id, stage: stage.id }),
+            {
+                name: stage.name,
+                status: nextStatus,
+                update_design_date: stage.update_design_date || '',
+                client_response_date: stage.client_response_date || '',
+                duration_workdays: stage.duration_workdays ?? '',
+                output_notes: stage.output_notes || '',
+            },
+            { preserveScroll: true }
+        );
+    };
+
+    const [draggedStageId, setDraggedStageId] = useState<number | null>(null);
+
+    const submitStageReorder = (orderedIds: number[]) => {
+        router.patch(
+            route('projects.stages.reorder', project.id),
+            { stage_ids: orderedIds },
+            { preserveScroll: true }
+        );
+    };
+
+    const handleMoveStage = (index: number, direction: 'up' | 'down') => {
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= project.stages.length) return;
+        const nextOrder = [...project.stages];
+        const [moved] = nextOrder.splice(index, 1);
+        nextOrder.splice(targetIndex, 0, moved);
+        submitStageReorder(nextOrder.map((s) => s.id));
+    };
+
+    const handleStageDrop = (targetStageId: number) => {
+        if (draggedStageId === null || draggedStageId === targetStageId) {
+            setDraggedStageId(null);
+            return;
+        }
+        const fromIndex = project.stages.findIndex((s) => s.id === draggedStageId);
+        const toIndex = project.stages.findIndex((s) => s.id === targetStageId);
+        setDraggedStageId(null);
+        if (fromIndex === -1 || toIndex === -1) return;
+
+        const nextOrder = [...project.stages];
+        const [moved] = nextOrder.splice(fromIndex, 1);
+        nextOrder.splice(toIndex, 0, moved);
+        submitStageReorder(nextOrder.map((s) => s.id));
+    };
 
     // Modals
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -219,13 +370,18 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
         columnStatus: KanbanTaskItem['status'] = 'todo',
         defaultStageId?: number
     ) => {
+        const activeOrFirstStageId =
+            project.stages.find((s) => s.status === 'active')?.id ??
+            project.stages[0]?.id ??
+            '';
+
         setEditingTask(null);
         setTaskColumnTarget(columnStatus);
-        taskForm.reset();
+        taskForm.clearErrors();
         taskForm.setData({
             title: '',
             description: '',
-            stage_id: defaultStageId || (project.stages[0]?.id ?? ''),
+            stage_id: defaultStageId ?? activeOrFirstStageId,
             assignee_id: auth.user.id,
             status: columnStatus,
             priority: 'medium',
@@ -593,12 +749,12 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                 </div>
 
                 {/* Tabs Switcher */}
-                <div className="flex items-center gap-2 border-b">
+                <div className="flex items-center gap-2 overflow-x-auto border-b">
                     <button
                         type="button"
                         onClick={() => setActiveTab('kanban')}
                         className={cn(
-                            'inline-flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition',
+                            'inline-flex shrink-0 items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition',
                             activeTab === 'kanban'
                                 ? 'border-foreground text-foreground'
                                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -630,9 +786,23 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
 
                     <button
                         type="button"
-                        onClick={() => setActiveTab('updates')}
+                        onClick={() => setActiveTab('timeline')}
                         className={cn(
                             'inline-flex items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition',
+                            activeTab === 'timeline'
+                                ? 'border-foreground text-foreground'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        <CalendarDays className="size-4" />
+                        <span>Kalender &amp; Timeline</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('updates')}
+                        className={cn(
+                            'inline-flex shrink-0 items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition',
                             activeTab === 'updates'
                                 ? 'border-foreground text-foreground'
                                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -642,6 +812,36 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                         <span>Catatan & Feed Progres</span>
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">
                             {updates.length}
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('brief')}
+                        className={cn(
+                            'inline-flex shrink-0 items-center gap-2 border-b-2 py-3 px-4 text-xs font-semibold transition',
+                            activeTab === 'brief'
+                                ? 'border-foreground text-foreground'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        <FileText className="size-4" />
+                        <span>Data Eksisting Klien</span>
+                        <span
+                            className={cn(
+                                'rounded-full px-2 py-0.5 text-[10px]',
+                                clientBrief.status === 'submitted'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : clientBrief.status === 'sent'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-muted text-muted-foreground'
+                            )}
+                        >
+                            {clientBrief.status === 'submitted'
+                                ? 'Terisi'
+                                : clientBrief.status === 'sent'
+                                ? 'Menunggu'
+                                : 'Draft'}
                         </span>
                     </button>
                 </div>
@@ -895,72 +1095,729 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                             </div>
 
                             <div className="mt-4 flex flex-col gap-3">
-                                {project.stages.map((stage, index) => {
-                                    const percent =
-                                        stage.tasks_count > 0
-                                            ? Math.round((stage.done_count / stage.tasks_count) * 100)
-                                            : 0;
+                                {(() => {
+                                    const allKanbanTasks = [
+                                        ...(kanban.todo || []),
+                                        ...(kanban.in_progress || []),
+                                        ...(kanban.review || []),
+                                        ...(kanban.done || []),
+                                    ];
+                                    const unassignedStageTasks = allKanbanTasks.filter(
+                                        (t) => !t.stage_id || !project.stages.some((s) => s.id === Number(t.stage_id))
+                                    );
 
                                     return (
-                                        <div
-                                            key={stage.id}
-                                            className="flex flex-col gap-3 rounded-xl border bg-background p-4 sm:flex-row sm:items-center sm:justify-between"
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-foreground">
-                                                    {index + 1}
-                                                </span>
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-foreground">
-                                                        {stage.name}
-                                                    </h4>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {stage.done_count} dari {stage.tasks_count} tugas selesai
-                                                    </p>
-                                                </div>
-                                            </div>
+                                        <>
+                                            {project.stages.map((stage, index) => {
+                                                const stageTasks = allKanbanTasks.filter(
+                                                    (t) => Number(t.stage_id) === Number(stage.id)
+                                                );
+                                                const doneCount = stageTasks.filter((t) => t.status === 'done').length;
+                                                const totalCount = stageTasks.length;
+                                                const percent =
+                                                    totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
-                                            <div className="flex items-center gap-4">
-                                                {/* Progress Bar */}
-                                                <div className="w-36">
-                                                    <div className="flex justify-between text-[11px] font-semibold text-muted-foreground">
-                                                        <span>Progres</span>
-                                                        <span>{percent}%</span>
-                                                    </div>
-                                                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                                                        <div
-                                                            className="h-full rounded-full bg-primary transition-all duration-300"
-                                                            style={{ width: `${percent}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openCreateTaskModal('todo', stage.id)}
-                                                    className="rounded-lg border px-2.5 py-1 text-xs font-semibold hover:bg-muted"
-                                                >
-                                                    + Tugas
-                                                </button>
-
-                                                {isOwnerOrLead && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteStage(stage.id)}
-                                                        className="text-muted-foreground hover:text-rose-600 p-1"
-                                                        title="Hapus Tahapan"
+                                                return (
+                                                    <div
+                                                        key={stage.id}
+                                                        draggable={isOwnerOrLead}
+                                                        onDragStart={() => setDraggedStageId(stage.id)}
+                                                        onDragOver={(e) => e.preventDefault()}
+                                                        onDrop={() => handleStageDrop(stage.id)}
+                                                        className={cn(
+                                                            'flex flex-col gap-3 rounded-xl border bg-background p-4 transition',
+                                                            draggedStageId === stage.id &&
+                                                                'opacity-50 border-dashed border-[#46797b]'
+                                                        )}
                                                     >
-                                                        <Trash2 className="size-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
+                                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div className="flex items-start gap-3">
+                                                                {isOwnerOrLead && (
+                                                                    <span
+                                                                        className="mt-1 cursor-grab text-muted-foreground hover:text-foreground"
+                                                                        title="Geser untuk ubah urutan"
+                                                                    >
+                                                                        <GripVertical className="size-4" />
+                                                                    </span>
+                                                                )}
+                                                                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-foreground">
+                                                                    {index + 1}
+                                                                </span>
+                                                                <div>
+                                                                    <h4 className="text-sm font-bold text-foreground">
+                                                                        {stage.name}
+                                                                    </h4>
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {doneCount} dari {totalCount} tugas selesai
+                                                                        {stage.update_design_date_formatted && (
+                                                                            <span className="ml-2 text-[11px] text-[#46797b] font-medium">
+                                                                                • Target Update: {stage.update_design_date_formatted}
+                                                                            </span>
+                                                                        )}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3">
+                                                                {isOwnerOrLead && (
+                                                                    <div className="flex items-center gap-0.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={index === 0}
+                                                                            onClick={() => handleMoveStage(index, 'up')}
+                                                                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                                                            title="Pindah ke Atas"
+                                                                        >
+                                                                            <ArrowUp className="size-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={index === project.stages.length - 1}
+                                                                            onClick={() => handleMoveStage(index, 'down')}
+                                                                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                                                            title="Pindah ke Bawah"
+                                                                        >
+                                                                            <ArrowDown className="size-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {/* Progress Bar */}
+                                                                <div className="w-36">
+                                                                    <div className="flex justify-between text-[11px] font-semibold text-muted-foreground">
+                                                                        <span>Progres</span>
+                                                                        <span>{percent}%</span>
+                                                                    </div>
+                                                                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                                                        <div
+                                                                            className="h-full rounded-full bg-primary transition-all duration-300"
+                                                                            style={{ width: `${percent}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openCreateTaskModal('todo', stage.id)}
+                                                                    className="rounded-lg border px-2.5 py-1 text-xs font-semibold hover:bg-muted"
+                                                                >
+                                                                    + Tugas
+                                                                </button>
+
+                                                                {isOwnerOrLead && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteStage(stage.id)}
+                                                                        className="text-muted-foreground hover:text-rose-600 p-1"
+                                                                        title="Hapus Tahapan"
+                                                                    >
+                                                                        <Trash2 className="size-4" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Daftar Tugas Tersinkronisasi dengan Kanban Board */}
+                                                        {stageTasks.length > 0 && (
+                                                            <div className="mt-1 flex flex-col gap-1.5 border-t pt-3 pl-0 sm:pl-10">
+                                                                {stageTasks.map((task) => (
+                                                                    <div
+                                                                        key={task.id}
+                                                                        className="flex flex-col gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"
+                                                                    >
+                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                            <span
+                                                                                className={cn(
+                                                                                    'shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                                                                                    priorityConfig[task.priority]?.badge
+                                                                                )}
+                                                                            >
+                                                                                {priorityConfig[task.priority]?.label}
+                                                                            </span>
+                                                                            <span
+                                                                                className={cn(
+                                                                                    'truncate font-semibold',
+                                                                                    task.status === 'done'
+                                                                                        ? 'line-through text-muted-foreground'
+                                                                                        : 'text-foreground'
+                                                                                )}
+                                                                            >
+                                                                                {task.title}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-2 shrink-0">
+                                                                            {task.assignee && (
+                                                                                <span className="text-[11px] text-muted-foreground">
+                                                                                    {task.assignee.name}
+                                                                                </span>
+                                                                            )}
+                                                                            {task.due_date_formatted && (
+                                                                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                                                    <Clock className="size-3" />
+                                                                                    {task.due_date_formatted}
+                                                                                </span>
+                                                                            )}
+                                                                            <select
+                                                                                value={task.status}
+                                                                                onChange={(e) =>
+                                                                                    handleQuickMoveStatus(
+                                                                                        task.id,
+                                                                                        e.target.value as KanbanTaskItem['status']
+                                                                                    )
+                                                                                }
+                                                                                className={cn(
+                                                                                    'rounded-md border px-2 py-0.5 text-[11px] font-semibold focus:outline-none',
+                                                                                    kanbanColumnConfig[task.status]?.badge
+                                                                                )}
+                                                                            >
+                                                                                <option value="todo">To Do</option>
+                                                                                <option value="in_progress">In Progress</option>
+                                                                                <option value="review">In Review</option>
+                                                                                <option value="done">Done</option>
+                                                                            </select>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => openEditTaskModal(task)}
+                                                                                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                                                title="Edit Tugas"
+                                                                            >
+                                                                                <Edit3 className="size-3.5" />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {unassignedStageTasks.length > 0 && (
+                                                <div className="rounded-xl border border-dashed bg-muted/15 p-4">
+                                                    <h4 className="text-xs font-bold text-muted-foreground">
+                                                        Tugas Belum Masuk Tahapan ({unassignedStageTasks.length})
+                                                    </h4>
+                                                    <div className="mt-2 flex flex-col gap-1.5">
+                                                        {unassignedStageTasks.map((task) => (
+                                                            <div
+                                                                key={task.id}
+                                                                className="flex items-center justify-between rounded-lg border bg-background px-3 py-2 text-xs"
+                                                            >
+                                                                <span className="font-semibold text-foreground">{task.title}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openEditTaskModal(task)}
+                                                                    className="rounded-md border px-2 py-0.5 text-[11px] font-semibold hover:bg-muted"
+                                                                >
+                                                                    Pilih Tahapan
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
                                     );
-                                })}
+                                })()}
                             </div>
                         </div>
                     </div>
                 )}
+
+                {/* TAB: KALENDER & TIMELINE PEKERJAAN */}
+                {activeTab === 'timeline' && (() => {
+                    const year = calendarMonth.getFullYear();
+                    const month = calendarMonth.getMonth();
+                    const firstDayOfMonth = new Date(year, month, 1);
+                    const startWeekday = firstDayOfMonth.getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const monthLabel = calendarMonth.toLocaleDateString('id-ID', {
+                        month: 'long',
+                        year: 'numeric',
+                    });
+
+                    type CalendarDayBlock = {
+                        stage: ProjectStageItem;
+                        phaseType: 'design_work' | 'design_deadline' | 'client_review' | 'client_deadline';
+                        badgeLabel: string;
+                    };
+
+                    const blocksByDate: Record<string, CalendarDayBlock[]> = {};
+
+                    const addDaysIso = (iso: string, days: number): string => {
+                        const d = new Date(iso + 'T00:00:00Z');
+                        d.setUTCDate(d.getUTCDate() + days);
+                        return d.toISOString().split('T')[0];
+                    };
+
+                    const todayNow = new Date();
+                    const todayIso = `${todayNow.getFullYear()}-${String(todayNow.getMonth() + 1).padStart(2, '0')}-${String(todayNow.getDate()).padStart(2, '0')}`;
+
+                    const eachDateBetween = (startIso: string, endIso: string, cb: (iso: string) => void) => {
+                        if (!startIso || !endIso || startIso > endIso) return;
+                        let curr = startIso;
+                        let guard = 0;
+                        while (curr <= endIso && guard < 180) {
+                            cb(curr);
+                            curr = addDaysIso(curr, 1);
+                            guard++;
+                        }
+                    };
+
+                    let cursorDate = project.start_date || '';
+                    project.stages.forEach((st) => {
+                        const designEnd = st.update_design_date || '';
+                        const clientEnd = st.client_response_date || '';
+
+                        if (designEnd) {
+                            const workStart = cursorDate && cursorDate <= designEnd ? cursorDate : designEnd;
+                            eachDateBetween(workStart, designEnd, (iso) => {
+                                blocksByDate[iso] ??= [];
+                                const isDeadline = iso === designEnd;
+                                blocksByDate[iso].push({
+                                    stage: st,
+                                    phaseType: isDeadline ? 'design_deadline' : 'design_work',
+                                    badgeLabel: isDeadline ? '📌 Batas Update Desain' : 'Pengerjaan Desain',
+                                });
+                            });
+                        }
+
+                        if (clientEnd) {
+                            const reviewStart = designEnd ? addDaysIso(designEnd, 1) : clientEnd;
+                            const actualReviewStart = reviewStart <= clientEnd ? reviewStart : clientEnd;
+                            eachDateBetween(actualReviewStart, clientEnd, (iso) => {
+                                blocksByDate[iso] ??= [];
+                                const isDeadline = iso === clientEnd;
+                                blocksByDate[iso].push({
+                                    stage: st,
+                                    phaseType: isDeadline ? 'client_deadline' : 'client_review',
+                                    badgeLabel: isDeadline ? '⏰ Batas Respon Klien' : 'Diskusi & Review Klien',
+                                });
+                            });
+                        }
+
+                        if (clientEnd) {
+                            cursorDate = addDaysIso(clientEnd, 1);
+                        } else if (designEnd) {
+                            cursorDate = addDaysIso(designEnd, 1);
+                        }
+                    });
+
+                    const calendarCells: Array<number | null> = [];
+                    for (let i = 0; i < startWeekday; i++) calendarCells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) calendarCells.push(d);
+
+                    return (
+                        <div className="flex flex-col gap-5">
+                            {/* Header & Action Bar */}
+                            <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h3 className="text-sm font-bold text-foreground">
+                                        Timeline Pekerjaan &amp; Jadwal Asistensi Klien
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        Setiap perubahan jadwal tahapan otomatis tersinkronisasi ke{' '}
+                                        <Link href={route('calendar.index')} className="font-semibold text-[#46797b] hover:underline">
+                                            Kalender Studio
+                                        </Link>.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <a
+                                        href={route('projects.timeline.print', project.id)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+                                    >
+                                        <Printer className="size-3.5" />
+                                        <span>Cetak / PDF Timeline</span>
+                                    </a>
+                                    {isOwnerOrLead && (
+                                        <button
+                                            type="button"
+                                            onClick={openCreateStageModal}
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#46797b] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3a6668]"
+                                        >
+                                            <Plus className="size-3.5" />
+                                            <span>Tambah Tahap Timeline</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Legend Status Warna Resmi */}
+                            <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-muted/20 px-4 py-2.5 text-xs">
+                                <span className="font-semibold text-muted-foreground">Keterangan Status:</span>
+                                <span className="inline-flex items-center gap-1.5 font-medium text-amber-800">
+                                    <span className="size-3 rounded-sm bg-amber-300 border border-amber-400" />
+                                    Dalam Proses Pengerjaan
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                                    <span className="size-3 rounded-sm bg-sky-200 border border-sky-300" />
+                                    Belum Dimulai
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800">
+                                    <span className="size-3 rounded-sm bg-emerald-200 border border-emerald-400" />
+                                    Sudah Selesai
+                                </span>
+                            </div>
+
+                            {/* Tabel Timeline Pekerjaan */}
+                            <div className="overflow-hidden rounded-2xl border bg-card">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse text-left text-xs">
+                                        <thead>
+                                            <tr className="border-b bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                <th className="px-4 py-3">Tahap Pekerjaan</th>
+                                                <th className="px-4 py-3">Update Desain Maksimal</th>
+                                                <th className="px-4 py-3">Diskusi &amp; Respon Maksimal</th>
+                                                <th className="px-4 py-3">Status</th>
+                                                <th className="px-4 py-3">Output Deliverables</th>
+                                                {isOwnerOrLead && <th className="px-4 py-3 text-right">Aksi</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {project.stages.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={isOwnerOrLead ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
+                                                        Belum ada tahapan timeline. Klik "Tambah Tahap Timeline" untuk membuat jadwal.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                project.stages.map((stage, stageIdx) => {
+                                                    const rowHighlight =
+                                                        stage.status === 'active'
+                                                            ? 'bg-amber-50/70'
+                                                            : stage.status === 'completed'
+                                                            ? 'bg-emerald-50/60'
+                                                            : 'bg-sky-50/35';
+
+                                                    return (
+                                                        <tr
+                                                            key={stage.id}
+                                                            draggable={isOwnerOrLead}
+                                                            onDragStart={() => setDraggedStageId(stage.id)}
+                                                            onDragOver={(e) => e.preventDefault()}
+                                                            onDrop={() => handleStageDrop(stage.id)}
+                                                            className={cn(
+                                                                'transition-colors hover:bg-muted/30',
+                                                                rowHighlight,
+                                                                draggedStageId === stage.id && 'opacity-50'
+                                                            )}
+                                                        >
+                                                            <td className="px-4 py-3 font-bold text-foreground">
+                                                                <div className="flex items-center gap-2">
+                                                                    {isOwnerOrLead && (
+                                                                        <span
+                                                                            className="cursor-grab text-muted-foreground hover:text-foreground"
+                                                                            title="Geser untuk ubah urutan"
+                                                                        >
+                                                                            <GripVertical className="size-3.5" />
+                                                                        </span>
+                                                                    )}
+                                                                    <div>
+                                                                        <div>{stage.name}</div>
+                                                                        {stage.duration_workdays && (
+                                                                            <span className="text-[10px] font-normal text-muted-foreground">
+                                                                                Est. {stage.duration_workdays} hari kerja
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
+                                                                {stage.update_design_date_formatted || (
+                                                                    <span className="text-muted-foreground italic">Belum diatur</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
+                                                                {stage.client_response_date_formatted || (
+                                                                    <span className="text-muted-foreground italic">Belum diatur</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                {isOwnerOrLead ? (
+                                                                    <select
+                                                                        value={stage.status}
+                                                                        onChange={(e) =>
+                                                                            handleQuickStageStatus(
+                                                                                stage,
+                                                                                e.target.value as ProjectStageItem['status']
+                                                                            )
+                                                                        }
+                                                                        className={cn(
+                                                                            'rounded-lg border px-2 py-1 text-[11px] font-semibold focus:outline-none',
+                                                                            stage.status === 'active'
+                                                                                ? 'border-amber-300 bg-amber-100 text-amber-900'
+                                                                                : stage.status === 'completed'
+                                                                                ? 'border-emerald-300 bg-emerald-100 text-emerald-900'
+                                                                                : 'border-sky-300 bg-sky-100 text-sky-900'
+                                                                        )}
+                                                                    >
+                                                                        <option value="pending">Belum Dimulai</option>
+                                                                        <option value="active">Dalam Proses</option>
+                                                                        <option value="completed">Sudah Selesai</option>
+                                                                    </select>
+                                                                ) : (
+                                                                    <span
+                                                                        className={cn(
+                                                                            'inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                                                                            stage.status === 'active'
+                                                                                ? 'bg-amber-100 text-amber-900'
+                                                                                : stage.status === 'completed'
+                                                                                ? 'bg-emerald-100 text-emerald-900'
+                                                                                : 'bg-sky-100 text-sky-900'
+                                                                        )}
+                                                                    >
+                                                                        {stage.status === 'active'
+                                                                            ? 'Dalam Proses'
+                                                                            : stage.status === 'completed'
+                                                                            ? 'Sudah Selesai'
+                                                                            : 'Belum Dimulai'}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-[11px] text-muted-foreground max-w-xs">
+                                                                <p className="line-clamp-2">{stage.output_notes || '-'}</p>
+                                                            </td>
+                                                            {isOwnerOrLead && (
+                                                                <td className="px-4 py-3 text-right whitespace-nowrap">
+                                                                    <div className="inline-flex items-center gap-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={stageIdx === 0}
+                                                                            onClick={() => handleMoveStage(stageIdx, 'up')}
+                                                                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                                                            title="Pindah ke Atas"
+                                                                        >
+                                                                            <ArrowUp className="size-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={stageIdx === project.stages.length - 1}
+                                                                            onClick={() => handleMoveStage(stageIdx, 'down')}
+                                                                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                                                            title="Pindah ke Bawah"
+                                                                        >
+                                                                            <ArrowDown className="size-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openEditStageModal(stage)}
+                                                                            className="rounded-lg border bg-background px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+                                                                        >
+                                                                            Sesuaikan
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDeleteStage(stage.id)}
+                                                                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600"
+                                                                            title="Hapus Tahap"
+                                                                        >
+                                                                            <Trash2 className="size-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Kalender Visual Timeline Proyek */}
+                            <div className="rounded-2xl border bg-card p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+                                    <div>
+                                        <h4 className="text-sm font-bold text-foreground">
+                                            Kalender Timeline Proyek — {monthLabel}
+                                        </h4>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Setiap rentang tanggal pengerjaan dan masa diskusi klien diblok penuh agar tim mudah memantau progres harian.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setCalendarMonth(new Date(year, month - 1, 1))
+                                            }
+                                            className="rounded-lg border p-1.5 hover:bg-muted"
+                                            title="Bulan Sebelumnya"
+                                        >
+                                            <ChevronLeft className="size-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCalendarMonth(new Date())}
+                                            className="rounded-lg border px-2.5 py-1 text-xs font-semibold hover:bg-muted"
+                                        >
+                                            Bulan Ini
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setCalendarMonth(new Date(year, month + 1, 1))
+                                            }
+                                            className="rounded-lg border p-1.5 hover:bg-muted"
+                                            title="Bulan Berikutnya"
+                                        >
+                                            <ChevronRight className="size-4" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Legend Kalender */}
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                                    <span className="inline-flex items-center gap-1.5 font-medium">
+                                        <span className="size-3 rounded-sm bg-amber-100 border border-amber-300" />
+                                        Pengerjaan (Proses)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 font-medium">
+                                        <span className="size-3 rounded-sm bg-emerald-100 border border-emerald-300" />
+                                        Tahap Selesai
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 font-medium">
+                                        <span className="size-3 rounded-sm bg-slate-100 border border-slate-300" />
+                                        Belum Dimulai
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 font-medium">
+                                        <span className="size-3 rounded-sm bg-sky-100 border border-sky-300" />
+                                        Diskusi &amp; Respon Klien
+                                    </span>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-muted-foreground">
+                                    {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d) => (
+                                        <div key={d} className="py-1.5">
+                                            {d}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1.5">
+                                    {calendarCells.map((day, idx) => {
+                                        if (day === null) {
+                                            return (
+                                                <div
+                                                    key={`empty-${idx}`}
+                                                    className="min-h-[96px] rounded-xl bg-muted/15"
+                                                />
+                                            );
+                                        }
+
+                                        const mm = String(month + 1).padStart(2, '0');
+                                        const dd = String(day).padStart(2, '0');
+                                        const isoDate = `${year}-${mm}-${dd}`;
+                                        const dayBlocks = blocksByDate[isoDate] || [];
+                                        const isToday = todayIso === isoDate;
+                                        const dayOfWeek = (startWeekday + day - 1) % 7;
+                                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+                                        // Determine full-cell block style from primary block of this date
+                                        const primary = dayBlocks[0];
+                                        let cellBgClass = isWeekend
+                                            ? 'border-border/60 bg-muted/25'
+                                            : 'border-border bg-background';
+
+                                        if (primary) {
+                                            if (
+                                                primary.phaseType === 'client_review' ||
+                                                primary.phaseType === 'client_deadline'
+                                            ) {
+                                                cellBgClass = 'border-sky-300 bg-sky-50/90';
+                                            } else if (primary.stage.status === 'completed') {
+                                                cellBgClass = 'border-emerald-300 bg-emerald-50/90';
+                                            } else if (primary.stage.status === 'active') {
+                                                cellBgClass = 'border-amber-300 bg-amber-50/95';
+                                            } else {
+                                                cellBgClass = 'border-slate-300 bg-slate-100/80';
+                                            }
+                                        }
+
+                                        return (
+                                            <div
+                                                key={isoDate}
+                                                onClick={() => {
+                                                    if (isOwnerOrLead && primary) {
+                                                        openEditStageModal(primary.stage);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    'min-h-[96px] rounded-xl border p-2 flex flex-col justify-between gap-1.5 transition-all',
+                                                    cellBgClass,
+                                                    isToday && 'ring-2 ring-[#46797b] ring-offset-1',
+                                                    isOwnerOrLead && primary && 'cursor-pointer hover:brightness-95'
+                                                )}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    {isWeekend && !primary ? (
+                                                        <span className="text-[9px] font-medium text-muted-foreground/70">
+                                                            Libur
+                                                        </span>
+                                                    ) : (
+                                                        <span />
+                                                    )}
+                                                    <span
+                                                        className={cn(
+                                                            'text-[11px] font-bold px-1.5 py-0.5 rounded-md',
+                                                            isToday
+                                                                ? 'bg-[#46797b] text-white'
+                                                                : primary
+                                                                ? 'text-foreground/90 bg-white/70'
+                                                                : 'text-muted-foreground'
+                                                        )}
+                                                    >
+                                                        {day}
+                                                    </span>
+                                                </div>
+
+                                                {dayBlocks.length > 0 && (
+                                                    <div className="flex flex-col gap-1">
+                                                        {dayBlocks.map((blk, bIdx) => {
+                                                            const isDeadline =
+                                                                blk.phaseType === 'design_deadline' ||
+                                                                blk.phaseType === 'client_deadline';
+
+                                                            return (
+                                                                <div
+                                                                    key={`${blk.stage.id}-${blk.phaseType}-${bIdx}`}
+                                                                    className="flex flex-col gap-0.5"
+                                                                    title={`${blk.stage.name} — ${blk.badgeLabel}`}
+                                                                >
+                                                                    <span className="text-[10.5px] font-bold leading-tight text-foreground line-clamp-2">
+                                                                        {blk.stage.name}
+                                                                    </span>
+                                                                    <span
+                                                                        className={cn(
+                                                                            'inline-block w-fit rounded px-1.5 py-0.5 text-[9.5px] font-semibold leading-none',
+                                                                            blk.phaseType === 'design_deadline'
+                                                                                ? 'bg-amber-500 text-white'
+                                                                                : blk.phaseType === 'client_deadline'
+                                                                                ? 'bg-sky-600 text-white'
+                                                                                : isDeadline
+                                                                                ? 'bg-foreground text-background'
+                                                                                : 'bg-white/75 text-foreground/80'
+                                                                        )}
+                                                                    >
+                                                                        {blk.badgeLabel}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* TAB 3: CATATAN & FEED PROGRES */}
                 {activeTab === 'updates' && (
@@ -1040,6 +1897,18 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                             )}
                         </div>
                     </div>
+                )}
+
+                {/* TAB 5: DATA EKSISTING KLIEN */}
+                {activeTab === 'brief' && (
+                    <ProjectBriefTab
+                        projectId={project.id}
+                        projectName={project.name}
+                        clientName={project.client_name}
+                        clientPhone={project.client_phone}
+                        isOwnerOrLead={isOwnerOrLead}
+                        brief={clientBrief}
+                    />
                 )}
             </div>
 
@@ -1417,6 +2286,142 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                 Ya, Hapus Proyek
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* MODAL TAMBAH / SESUAIKAN TAHAP TIMELINE */}
+            {isStageModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+                    <div className="relative w-full max-w-lg rounded-2xl border bg-card p-6 shadow-2xl">
+                        <div className="flex items-start justify-between border-b pb-3">
+                            <div>
+                                <h3 className="text-base font-bold text-foreground">
+                                    {editingStage ? 'Sesuaikan Tahapan & Jadwal' : 'Tambah Tahap Timeline'}
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Perubahan jadwal otomatis sinkron dengan Kalender Studio.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsStageModalOpen(false)}
+                                className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                            >
+                                <X className="size-4" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleStageTimelineSubmit} className="mt-4 flex flex-col gap-3">
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Nama Tahap Pekerjaan <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={stageTimelineForm.data.name}
+                                    onChange={(e) => stageTimelineForm.setData('name', e.target.value)}
+                                    placeholder="cth: Tahap Konseptual V1"
+                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Update Desain Maksimal
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={stageTimelineForm.data.update_design_date}
+                                        onChange={(e) => handleStageUpdateDesignDateChange(e.target.value)}
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Diskusi &amp; Respon Maksimal (+3 Hari)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={stageTimelineForm.data.client_response_date}
+                                        onChange={(e) =>
+                                            stageTimelineForm.setData('client_response_date', e.target.value)
+                                        }
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Status Pengerjaan
+                                    </label>
+                                    <select
+                                        value={stageTimelineForm.data.status}
+                                        onChange={(e) =>
+                                            stageTimelineForm.setData(
+                                                'status',
+                                                e.target.value as ProjectStageItem['status']
+                                            )
+                                        }
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    >
+                                        <option value="pending">Belum Dimulai</option>
+                                        <option value="active">Dalam Proses Pengerjaan</option>
+                                        <option value="completed">Sudah Selesai</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Estimasi Durasi (Hari Kerja)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={stageTimelineForm.data.duration_workdays}
+                                        onChange={(e) =>
+                                            stageTimelineForm.setData('duration_workdays', e.target.value)
+                                        }
+                                        placeholder="cth: 7"
+                                        className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Penjelasan Output Deliverables
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={stageTimelineForm.data.output_notes}
+                                    onChange={(e) =>
+                                        stageTimelineForm.setData('output_notes', e.target.value)
+                                    }
+                                    placeholder="Rincian output desain pada tahapan ini..."
+                                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-xs focus:border-foreground focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-end gap-2 border-t pt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsStageModalOpen(false)}
+                                    className="rounded-lg border px-3.5 py-1.5 text-xs font-semibold hover:bg-muted"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={stageTimelineForm.processing}
+                                    className="rounded-lg bg-[#46797b] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#3a6668] disabled:opacity-50"
+                                >
+                                    {stageTimelineForm.processing ? 'Menyimpan...' : 'Simpan Timeline'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

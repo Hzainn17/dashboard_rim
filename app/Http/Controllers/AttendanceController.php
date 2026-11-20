@@ -14,6 +14,7 @@ use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\File;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -157,10 +158,15 @@ class AttendanceController extends Controller
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
             'site_visit_project_id' => ['required_if:mode,site_visit', 'nullable', 'exists:projects,id'],
+            'site_visit_photo' => ['required_if:mode,site_visit', 'nullable', 'image', 'max:5120'],
             'notes' => ['nullable', 'string', 'max:500'],
             'is_weekend' => ['nullable', 'boolean'],
             'compensation_type' => ['nullable', Rule::in(['none', 'overtime', 'day_off_exchange'])],
             'exchange_date' => ['required_if:compensation_type,day_off_exchange', 'nullable', 'date', 'after:today'],
+        ], [
+            'site_visit_project_id.required_if' => 'Proyek tujuan Site Visit wajib dipilih.',
+            'site_visit_photo.required_if' => 'Foto bukti lokasi wajib diambil atau dilampirkan untuk absen Site Visit.',
+            'site_visit_photo.image' => 'Lampiran Site Visit harus berupa file gambar (JPG, PNG, WebP).',
         ]);
 
         $hasCoords = isset($validated['latitude'], $validated['longitude']);
@@ -183,6 +189,19 @@ class AttendanceController extends Controller
         $isWeekend = $today->isWeekend() || $request->boolean('is_weekend');
         $compensationType = $isWeekend ? ($validated['compensation_type'] ?? 'overtime') : 'none';
 
+        $siteVisitPhotoUrl = null;
+        if ($validated['mode'] === 'site_visit' && $request->hasFile('site_visit_photo')) {
+            $dir = public_path('uploads/site-visits');
+            if (! File::isDirectory($dir)) {
+                File::makeDirectory($dir, 0755, true);
+            }
+            $file = $request->file('site_visit_photo');
+            $ext = $file->getClientOriginalExtension() ?: 'jpg';
+            $filename = 'site_visit_'.$user->id.'_'.$today->format('Ymd').'_'.time().'.'.$ext;
+            $file->move($dir, $filename);
+            $siteVisitPhotoUrl = "/uploads/site-visits/{$filename}";
+        }
+
         $attendance = $this->upsertAttendanceForDate($user->id, $today, [
             'mode' => $validated['mode'],
             'is_weekend' => $isWeekend,
@@ -199,6 +218,7 @@ class AttendanceController extends Controller
             'shortage_minutes' => 0,
             'status' => $validated['mode'] === 'site_visit' ? 'site_visit' : 'hadir',
             'site_visit_project_id' => $validated['mode'] === 'site_visit' ? $validated['site_visit_project_id'] : null,
+            'site_visit_photo_url' => $validated['mode'] === 'site_visit' ? $siteVisitPhotoUrl : null,
             'site_visit_status' => $validated['mode'] === 'site_visit' ? 'pending' : 'none',
             'notes' => $validated['notes'] ?? null,
         ]);
@@ -280,12 +300,33 @@ class AttendanceController extends Controller
         $validated = $request->validate([
             'project_id' => ['required', 'exists:projects,id'],
             'task_description' => ['required', 'string', 'max:500'],
+            'latitude' => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
         ]);
 
         $todayAttendance = Attendance::query()
             ->where('user_id', $user->id)
             ->whereDate('date', $today)
             ->first();
+
+        $officeSetting = OfficeSetting::current();
+        $isSiteVisit = $todayAttendance?->mode === 'site_visit';
+
+        if (! $isSiteVisit && isset($validated['latitude'], $validated['longitude'])) {
+            $distance = $this->calculateHaversineMeters(
+                (float) $validated['latitude'],
+                (float) $validated['longitude'],
+                (float) $officeSetting->latitude,
+                (float) $officeSetting->longitude,
+            );
+
+            if ($distance > $officeSetting->radius_meters) {
+                return redirect()->back()->with(
+                    'error',
+                    "Jarak Anda ({$distance}m) berada di luar radius kantor ({$officeSetting->radius_meters}m). Lembur kantor hanya dapat dimulai di dalam area studio.",
+                );
+            }
+        }
 
         if ($blockReason = $this->validateCanStartOvertime($user, $today, $todayAttendance)) {
             return redirect()->back()->with('error', $blockReason);
@@ -554,8 +595,6 @@ class AttendanceController extends Controller
      */
     public function approvals(): Response
     {
-        $this->seedSampleAttendanceIfEmpty();
-
         $siteVisits = Attendance::query()
             ->with(['user.employee', 'siteVisitProject:id,name,location'])
             ->where(function ($q): void {
@@ -842,8 +881,6 @@ class AttendanceController extends Controller
      */
     public function monitoring(Request $request): Response
     {
-        $this->seedSampleAttendanceIfEmpty();
-
         $today = Carbon::today();
         $month = $request->integer('month', $today->month);
         $year = $request->integer('year', $today->year);
@@ -1233,8 +1270,9 @@ class AttendanceController extends Controller
      */
     private function formatAttendance(Attendance $att): array
     {
+        $cooldownMinutes = OfficeSetting::current()->overtime_cooldown_minutes ?? 60;
         $elapsedSeconds = 0;
-        $cooldownRemainingSeconds = 3600;
+        $cooldownRemainingSeconds = $cooldownMinutes * 60;
         if ($att->check_in_at) {
             if ($att->check_out_at) {
                 $elapsedSeconds = $att->actual_work_minutes !== null
@@ -1242,7 +1280,7 @@ class AttendanceController extends Controller
                     : max(0, (int) $att->check_in_at->diffInSeconds($att->check_out_at));
 
                 $secondsSinceCheckout = max(0, (int) $att->check_out_at->diffInSeconds(now()));
-                $cooldownRemainingSeconds = max(0, 3600 - $secondsSinceCheckout);
+                $cooldownRemainingSeconds = max(0, ($cooldownMinutes * 60) - $secondsSinceCheckout);
             } else {
                 $elapsedSeconds = max(0, (int) $att->check_in_at->diffInSeconds(now()));
             }
