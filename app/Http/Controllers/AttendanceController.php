@@ -169,6 +169,16 @@ class AttendanceController extends Controller
             'site_visit_photo.image' => 'Lampiran Site Visit harus berupa file gambar (JPG, PNG, WebP).',
         ]);
 
+        if ($validated['mode'] === 'site_visit' && ! empty($validated['site_visit_project_id']) && $user->isFieldWorker()) {
+            $siteProject = Project::query()->find($validated['site_visit_project_id']);
+            if ($siteProject && ! $siteProject->hasFieldSite()) {
+                return redirect()->back()->with(
+                    'error',
+                    'Karyawan lapangan hanya dapat Site Visit ke proyek Pembangunan / Desain & Bangun yang sedang berjalan.',
+                );
+            }
+        }
+
         $hasCoords = isset($validated['latitude'], $validated['longitude']);
         $distance = $hasCoords
             ? $this->calculateHaversineMeters(

@@ -75,6 +75,7 @@ interface ProjectDetailData {
     location?: string | null;
     category: string;
     package_name?: string | null;
+    project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun' | null;
     package_addons?: string[];
     building_area?: number | null;
     estimated_budget?: number | null;
@@ -503,6 +504,7 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
         client_phone: project.client_phone || '',
         location: project.location || '',
         category: project.category,
+        project_type: project.project_type || 'perencanaan',
         cover_image_url: project.cover_image_url,
         drive_url: project.drive_url || '',
         description: project.description || '',
@@ -2148,6 +2150,29 @@ export default function ProjectShow({ auth, project, kanban, updates, teamMember
                                         ))}
                                     </select>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-foreground">
+                                    Lingkup Proyek
+                                </label>
+                                <select
+                                    value={editProjectForm.data.project_type}
+                                    onChange={(e) =>
+                                        editProjectForm.setData(
+                                            'project_type',
+                                            e.target.value as 'perencanaan' | 'pembangunan' | 'desain_bangun'
+                                        )
+                                    }
+                                    className="mt-1 h-9 w-full rounded-lg border bg-background px-3 text-xs focus:border-foreground focus:outline-none"
+                                >
+                                    <option value="perencanaan">Perencanaan (Desain Saja)</option>
+                                    <option value="pembangunan">Pembangunan (Fisik Lapangan)</option>
+                                    <option value="desain_bangun">Desain &amp; Bangun</option>
+                                </select>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Pembangunan &amp; Desain-Bangun tampil di Site Visit karyawan lapangan.
+                                </p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">

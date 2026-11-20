@@ -33,8 +33,9 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     const page = usePage<PageProps>();
     const serverAtt = page.props.auth?.todayAttendance ?? null;
 
+    const isFieldWorker = page.props.auth?.workType === 'lapangan';
     const [mode, setMode] = useState<AttendanceMode>(
-        serverAtt?.mode === 'site_visit' ? 'site' : 'office',
+        serverAtt ? (serverAtt.mode === 'site_visit' ? 'site' : 'office') : isFieldWorker ? 'site' : 'office',
     );
     const [checkedInAt, setCheckedInAt] = useState<Date | null>(
         serverAtt?.check_in_at ? new Date(serverAtt.check_in_at) : null,

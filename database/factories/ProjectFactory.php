@@ -26,6 +26,7 @@ class ProjectFactory extends Factory
             'client_phone' => fake()->numerify('08##########'),
             'location' => fake()->city(),
             'category' => fake()->randomElement(['Residensial', 'Komersial', 'Interior', 'Renovasi']),
+            'project_type' => 'perencanaan',
             'description' => fake()->sentence(12),
             'status' => 'ongoing',
             'progress_percent' => 0,
@@ -33,5 +34,15 @@ class ProjectFactory extends Factory
             'due_date' => fake()->dateTimeBetween('+2 weeks', '+6 months'),
             'owner_id' => User::factory()->admin(),
         ];
+    }
+
+    /**
+     * Indicate that the project has a running construction site.
+     */
+    public function construction(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'project_type' => 'pembangunan',
+        ]);
     }
 }

@@ -47,6 +47,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine whether the user is a field employee (karyawan lapangan).
+     */
+    public function isFieldWorker(): bool
+    {
+        return ($this->employee?->work_type ?? 'kantor') === 'lapangan';
+    }
+
+    /**
      * Scope a query to only include active users.
      *
      * @param  Builder<User>  $query

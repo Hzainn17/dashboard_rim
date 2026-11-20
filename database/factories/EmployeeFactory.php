@@ -23,6 +23,7 @@ class EmployeeFactory extends Factory
             'employee_code' => fake()->unique()->numerify('RIM-###'),
             'position' => fake()->randomElement(['Lead Arsitek', 'Arsitek', 'Drafter', '3D Visualizer', 'Interior Designer']),
             'department' => fake()->randomElement(['Perencanaan', 'Pembangunan', 'Administrasi', 'Digital Marketing']),
+            'work_type' => 'kantor',
             'join_date' => fake()->dateTimeBetween('-4 years', '-1 month'),
             'base_salary' => fake()->randomElement([4_500_000, 6_000_000, 8_000_000, 12_000_000]),
             'fixed_allowance' => fake()->randomElement([0, 500_000, 1_000_000]),
@@ -33,5 +34,15 @@ class EmployeeFactory extends Factory
             'annual_leave_quota' => 12,
             'employment_status' => 'tetap',
         ];
+    }
+
+    /**
+     * Indicate that the employee works in the field (karyawan lapangan).
+     */
+    public function field(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'work_type' => 'lapangan',
+        ]);
     }
 }

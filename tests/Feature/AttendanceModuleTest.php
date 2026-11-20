@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Attendance;
+use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\OfficeSetting;
 use App\Models\Overtime;
@@ -542,5 +543,66 @@ class AttendanceModuleTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame(1, Overtime::query()->where('user_id', $siteEmp->id)->count());
+    }
+
+    public function test_field_employee_only_sees_construction_projects_for_site_visit(): void
+    {
+        OfficeSetting::current();
+        $fieldEmployee = User::factory()->create();
+        Employee::factory()->field()->create(['user_id' => $fieldEmployee->id]);
+        $officeEmployee = User::factory()->create();
+        Employee::factory()->create(['user_id' => $officeEmployee->id]);
+
+        $planningProject = Project::factory()->create();
+        $constructionProject = Project::factory()->construction()->create();
+        Project::factory()->construction()->create(['status' => 'done']);
+
+        $this->actingAs($fieldEmployee)
+            ->get('/attendance')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('siteVisitProjects', 1)
+                ->where('siteVisitProjects.0.id', $constructionProject->id)
+                ->where('siteVisitProjects.0.group', 'lapangan')
+                ->where('auth.workType', 'lapangan'));
+
+        $this->actingAs($officeEmployee)
+            ->get('/attendance')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('siteVisitProjects', 2)
+                ->where('siteVisitProjects.0.id', $constructionProject->id)
+                ->where('siteVisitProjects.1.id', $planningProject->id)
+                ->where('siteVisitProjects.1.group', 'perencanaan'));
+    }
+
+    public function test_field_employee_cannot_site_visit_a_planning_only_project(): void
+    {
+        OfficeSetting::current();
+        $fieldEmployee = User::factory()->create();
+        Employee::factory()->field()->create(['user_id' => $fieldEmployee->id]);
+        $planningProject = Project::factory()->create();
+        $constructionProject = Project::factory()->construction()->create();
+
+        $this->actingAs($fieldEmployee)
+            ->post('/attendance/check-in', [
+                'mode' => 'site_visit',
+                'site_visit_project_id' => $planningProject->id,
+                'site_visit_photo' => UploadedFile::fake()->image('site.jpg'),
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('attendances', ['user_id' => $fieldEmployee->id]);
+
+        $this->actingAs($fieldEmployee)
+            ->post('/attendance/check-in', [
+                'mode' => 'site_visit',
+                'site_visit_project_id' => $constructionProject->id,
+                'site_visit_photo' => UploadedFile::fake()->image('site.jpg'),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $fieldEmployee->id,
+            'site_visit_project_id' => $constructionProject->id,
+        ]);
     }
 }

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'user_id', 'employee_code', 'position', 'department', 'join_date',
+    'user_id', 'employee_code', 'position', 'department', 'work_type', 'join_date',
     'base_salary', 'fixed_allowance', 'overtime_rate_per_hour',
     'bank_name', 'bank_account_number', 'bank_account_holder', 'bank_branch',
     'annual_leave_quota', 'employment_status',

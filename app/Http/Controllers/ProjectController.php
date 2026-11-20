@@ -35,6 +35,7 @@ class ProjectController extends Controller
         $search = $request->string('search')->trim()->value();
         $category = $request->string('category')->trim()->value();
         $status = $request->string('status')->trim()->value();
+        $projectType = $request->string('type')->trim()->value();
         $tab = $request->input('tab', $isAdmin ? 'all' : 'my');
 
         $query = Project::query()
@@ -68,6 +69,12 @@ class ProjectController extends Controller
 
         if ($status && $status !== 'all') {
             $query->where('status', $status);
+        }
+
+        if ($projectType === 'lapangan') {
+            $query->whereIn('project_type', Project::FIELD_TYPES);
+        } elseif ($projectType && array_key_exists($projectType, Project::TYPES)) {
+            $query->where('project_type', $projectType);
         }
 
         $allProjectsForMetrics = Project::query()->get();
@@ -109,6 +116,7 @@ class ProjectController extends Controller
                     'location' => $p->location,
                     'category' => $p->package_name ?: ($p->category ?: 'Paket 1'),
                     'package_name' => $p->package_name ?: ($p->category ?: 'Paket 1'),
+                    'project_type' => $p->project_type ?? 'perencanaan',
                     'package_addons' => $p->package_addons ?? [],
                     'building_area' => $p->building_area,
                     'estimated_budget' => $p->estimated_budget,
@@ -201,8 +209,10 @@ class ProjectController extends Controller
                 'search' => $search,
                 'category' => $category,
                 'status' => $status,
+                'type' => $projectType,
                 'tab' => $tab,
             ],
+            'projectTypes' => Project::TYPES,
             'categories' => $categories,
             'packages' => ProjectPackageService::packages(),
             'addons' => ProjectPackageService::addons(),
@@ -228,6 +238,7 @@ class ProjectController extends Controller
             'location' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:100'],
             'package_name' => ['nullable', 'string', 'max:100'],
+            'project_type' => ['nullable', Rule::in(array_keys(Project::TYPES))],
             'package_addons' => ['nullable', 'array'],
             'package_addons.*' => ['string', 'max:150'],
             'building_area' => ['nullable', 'numeric', 'min:0'],
@@ -284,6 +295,7 @@ class ProjectController extends Controller
             'location' => $validated['location'] ?? null,
             'category' => $packageName,
             'package_name' => $packageName,
+            'project_type' => $validated['project_type'] ?? 'perencanaan',
             'package_addons' => $validated['package_addons'] ?? [],
             'building_area' => $validated['building_area'] ?? null,
             'estimated_budget' => $validated['estimated_budget'] ?? null,
@@ -387,6 +399,7 @@ class ProjectController extends Controller
                 'location' => $project->location,
                 'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
                 'package_name' => $project->package_name ?: ($project->category ?: 'Paket 1'),
+                'project_type' => $project->project_type ?? 'perencanaan',
                 'package_addons' => $project->package_addons ?? [],
                 'building_area' => $project->building_area,
                 'estimated_budget' => $project->estimated_budget,
@@ -479,6 +492,7 @@ class ProjectController extends Controller
             'location' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:100'],
             'package_name' => ['nullable', 'string', 'max:100'],
+            'project_type' => ['nullable', Rule::in(array_keys(Project::TYPES))],
             'package_addons' => ['nullable', 'array'],
             'package_addons.*' => ['string', 'max:150'],
             'building_area' => ['nullable', 'numeric', 'min:0'],
@@ -517,6 +531,7 @@ class ProjectController extends Controller
             'location' => $validated['location'] ?? null,
             'category' => $packageName,
             'package_name' => $packageName,
+            'project_type' => $validated['project_type'] ?? $project->project_type ?? 'perencanaan',
             'package_addons' => $validated['package_addons'] ?? $project->package_addons ?? [],
             'building_area' => array_key_exists('building_area', $validated) ? $validated['building_area'] : $project->building_area,
             'estimated_budget' => array_key_exists('estimated_budget', $validated) ? $validated['estimated_budget'] : $project->estimated_budget,

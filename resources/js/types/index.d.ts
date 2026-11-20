@@ -126,6 +126,15 @@ export interface DashboardMetrics {
     urgent_projects_count: number;
 }
 
+export interface SiteVisitProjectOption {
+    id: number;
+    name: string;
+    location?: string | null;
+    client_name?: string | null;
+    project_type: 'perencanaan' | 'pembangunan' | 'desain_bangun';
+    group: 'lapangan' | 'perencanaan';
+}
+
 export type PageProps<
     T extends Record<string, unknown> = Record<string, unknown>,
 > = T & {
@@ -133,6 +142,7 @@ export type PageProps<
         name: string;
         logo_url: string;
     };
+    siteVisitProjects?: SiteVisitProjectOption[];
     auth: {
         user: User;
         todayAttendance?: {
@@ -168,6 +178,7 @@ export type PageProps<
             status: 'active' | 'pending' | 'approved' | 'rejected';
         } | null;
         hasLeaveToday?: boolean;
+        workType?: 'kantor' | 'lapangan';
         unclosedPastAttendance?: {
             id: number;
             date: string;

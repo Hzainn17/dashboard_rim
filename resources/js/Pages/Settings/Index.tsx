@@ -820,7 +820,7 @@ export default function SettingsIndex({ auth, setting, portfolios = [] }: Props)
                                     {editingPortfolio ? 'Edit Portofolio Login' : 'Tambah Portofolio Login'}
                                 </h3>
                                 <p className="text-xs text-muted-foreground">
-                                    Unggah foto langsung dari perangkat atau pilih gambar bawaan studio.
+                                    Unggah foto karya portofolio langsung dari perangkat Anda.
                                 </p>
                             </div>
                             <button
@@ -857,7 +857,7 @@ export default function SettingsIndex({ auth, setting, portfolios = [] }: Props)
                                         />
                                     </label>
                                     <span className="text-[11px] text-muted-foreground">
-                                        Otomatis disesuaikan untuk web (maks. 4 MB). Kosongkan untuk gambar default.
+                                        Otomatis dikompresi & disesuaikan untuk web (maks. 4 MB).
                                     </span>
                                 </div>
                                 {portfolioImageError && (

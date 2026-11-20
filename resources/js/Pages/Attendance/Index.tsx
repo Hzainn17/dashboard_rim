@@ -154,14 +154,19 @@ export default function AttendanceIndex({
     isWeekendToday,
     todayDate,
 }: Props) {
-    const { auth, flash } = usePage<PageProps>().props;
+    const { auth, flash, siteVisitProjects = [] } = usePage<PageProps>().props;
+    const isFieldWorker = auth?.workType === 'lapangan';
+    const fieldSiteProjects = siteVisitProjects.filter((p) => p.group === 'lapangan');
+    const planningSiteProjects = siteVisitProjects.filter((p) => p.group === 'perencanaan');
     const initialRole = auth?.user?.role === 'admin' ? 'admin' : 'karyawan';
     const activeMenu = initialRole === 'admin' ? 'presensi-saya' : 'presensi-harian';
 
     const [activeTab, setActiveTab] = useState<'history' | 'leave'>('history');
-    const [mode, setMode] = useState<'office' | 'site_visit'>(todayAttendance?.mode ?? 'office');
+    const [mode, setMode] = useState<'office' | 'site_visit'>(
+        todayAttendance?.mode ?? (isFieldWorker ? 'site_visit' : 'office'),
+    );
     const [siteProjectId, setSiteProjectId] = useState<string>(
-        String(todayAttendance?.site_visit_project_id ?? projects[0]?.id ?? ''),
+        String(todayAttendance?.site_visit_project_id ?? siteVisitProjects[0]?.id ?? ''),
     );
     const [notes, setNotes] = useState<string>(todayAttendance?.notes ?? '');
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -790,12 +795,37 @@ export default function AttendanceIndex({
                                                         onChange={(e) => setSiteProjectId(e.target.value)}
                                                         className="h-9 rounded-lg border bg-card px-2.5 text-sm outline-none focus-visible:border-ring"
                                                     >
-                                                        {projects.map((p) => (
-                                                            <option key={p.id} value={p.id}>
-                                                                {p.name} ({p.location || 'Lokasi Proyek'})
+                                                        {siteVisitProjects.length === 0 && (
+                                                            <option value="">
+                                                                {isFieldWorker
+                                                                    ? 'Belum ada proyek Pembangunan berjalan'
+                                                                    : 'Belum ada proyek aktif'}
                                                             </option>
-                                                        ))}
+                                                        )}
+                                                        {fieldSiteProjects.length > 0 && (
+                                                            <optgroup label="Proyek Pembangunan (Lapangan)">
+                                                                {fieldSiteProjects.map((p) => (
+                                                                    <option key={p.id} value={p.id}>
+                                                                        {p.name} ({p.location || 'Lokasi Proyek'})
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                        {planningSiteProjects.length > 0 && (
+                                                            <optgroup label="Proyek Perencanaan (Survey Lahan)">
+                                                                {planningSiteProjects.map((p) => (
+                                                                    <option key={p.id} value={p.id}>
+                                                                        {p.name} ({p.location || 'Lokasi Proyek'})
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
                                                     </select>
+                                                    {isFieldWorker && (
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Sebagai karyawan lapangan, hanya proyek Pembangunan / Desain &amp; Bangun yang ditampilkan.
+                                                        </p>
+                                                    )}
 
                                                     <label className="mt-1 text-xs font-medium text-muted-foreground">
                                                         Uraian Kegiatan Lapangan (Opsional)

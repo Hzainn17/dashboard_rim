@@ -479,4 +479,39 @@ class ProjectManagementTest extends TestCase
         $this->assertEquals('Timur', $brief->responses['site_orientation']);
         $this->assertEquals('Ya', $brief->responses['custom_pool']);
     }
+
+    public function test_admin_can_set_project_type_and_filter_field_projects(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $planningProject = Project::factory()->create(['owner_id' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->put(route('projects.update', $planningProject), [
+                'name' => $planningProject->name,
+                'client_name' => $planningProject->client_name,
+                'status' => 'ongoing',
+                'project_type' => 'invalid_type',
+            ])
+            ->assertSessionHasErrors('project_type');
+
+        $this->actingAs($admin)
+            ->put(route('projects.update', $planningProject), [
+                'name' => $planningProject->name,
+                'client_name' => $planningProject->client_name,
+                'status' => 'ongoing',
+                'project_type' => 'desain_bangun',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('desain_bangun', $planningProject->fresh()->project_type);
+
+        Project::factory()->create(['owner_id' => $admin->id, 'name' => 'Studio Only']);
+
+        $this->actingAs($admin)
+            ->get(route('projects.index', ['tab' => 'all', 'type' => 'lapangan']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('projects', 1)
+                ->where('projects.0.id', $planningProject->id)
+                ->where('projects.0.project_type', 'desain_bangun'));
+    }
 }

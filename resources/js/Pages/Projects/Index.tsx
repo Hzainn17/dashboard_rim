@@ -89,8 +89,10 @@ interface Props extends PageProps {
         search?: string;
         category?: string;
         status?: string;
+        type?: string;
         tab?: string;
     };
+    projectTypes?: Record<string, string>;
     categories: string[];
     packages: PackageOption[];
     addons: AddonOption[];
@@ -115,6 +117,11 @@ export default function ProjectIndex({
     addons = [],
     teamMembers,
     timelineProjects = [],
+    projectTypes = {
+        perencanaan: 'Perencanaan (Desain Saja)',
+        pembangunan: 'Pembangunan (Fisik Lapangan)',
+        desain_bangun: 'Desain & Bangun',
+    },
 }: Props) {
     const { flash } = usePage<PageProps>().props;
     const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
@@ -122,6 +129,7 @@ export default function ProjectIndex({
     const [search, setSearch] = useState(filters.search || '');
     const [selectedCategory, setSelectedCategory] = useState(filters.category || 'all');
     const [selectedStatus, setSelectedStatus] = useState(filters.status || 'all');
+    const [selectedType, setSelectedType] = useState(filters.type || 'all');
     const [activeTab, setActiveTab] = useState(filters.tab || (isAdmin ? 'all' : 'my'));
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -130,6 +138,7 @@ export default function ProjectIndex({
             search: string;
             category: string;
             status: string;
+            type: string;
             tab: string;
         }>
     ) => {
@@ -140,6 +149,7 @@ export default function ProjectIndex({
                 category:
                     newFilters.category !== undefined ? newFilters.category : selectedCategory,
                 status: newFilters.status !== undefined ? newFilters.status : selectedStatus,
+                type: newFilters.type !== undefined ? newFilters.type : selectedType,
                 tab: newFilters.tab !== undefined ? newFilters.tab : activeTab,
             },
             { preserveState: true, preserveScroll: true }
@@ -162,6 +172,11 @@ export default function ProjectIndex({
         applyFilters({ status: val });
     };
 
+    const handleTypeChange = (val: string) => {
+        setSelectedType(val);
+        applyFilters({ type: val });
+    };
+
     const handleTabChange = (tab: string) => {
         setActiveTab(tab);
         applyFilters({ tab });
@@ -175,6 +190,7 @@ export default function ProjectIndex({
         location: '',
         category: 'Paket 1',
         package_name: 'Paket 1',
+        project_type: 'perencanaan',
         package_addons: [] as string[],
         building_area: '',
         estimated_budget: '',
@@ -475,6 +491,21 @@ export default function ProjectIndex({
                                 <option value="done">Selesai</option>
                                 <option value="on_hold">Ditunda</option>
                             </select>
+
+                            <select
+                                value={selectedType}
+                                onChange={(e) => handleTypeChange(e.target.value)}
+                                className="h-9 rounded-lg border bg-background px-3 text-xs font-medium text-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                aria-label="Filter lingkup proyek"
+                            >
+                                <option value="all">Semua Lingkup</option>
+                                <option value="lapangan">Berjalan di Lapangan</option>
+                                {Object.entries(projectTypes).map(([value, label]) => (
+                                    <option key={value} value={value}>
+                                        {label}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
@@ -538,7 +569,8 @@ export default function ProjectIndex({
                                     setSearch('');
                                     setSelectedCategory('all');
                                     setSelectedStatus('all');
-                                    applyFilters({ search: '', category: 'all', status: 'all' });
+                                    setSelectedType('all');
+                                    applyFilters({ search: '', category: 'all', status: 'all', type: 'all' });
                                 }}
                                 className="rounded-lg border bg-background px-3.5 py-1.5 text-xs font-medium hover:bg-muted"
                             >
@@ -605,6 +637,54 @@ export default function ProjectIndex({
                                     {errors.name && (
                                         <p className="mt-1 text-xs text-rose-500">{errors.name}</p>
                                     )}
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="text-xs font-semibold text-foreground">
+                                        Lingkup Proyek <span className="text-rose-500">*</span>
+                                    </label>
+                                    <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                        {[
+                                            {
+                                                value: 'perencanaan',
+                                                title: 'Perencanaan',
+                                                desc: 'Desain / gambar saja, tanpa fisik lapangan',
+                                            },
+                                            {
+                                                value: 'pembangunan',
+                                                title: 'Pembangunan',
+                                                desc: 'Fisik / kontraktor, dikerjakan tim lapangan',
+                                            },
+                                            {
+                                                value: 'desain_bangun',
+                                                title: 'Desain & Bangun',
+                                                desc: 'Perencanaan dilanjut pembangunan fisik',
+                                            },
+                                        ].map((opt) => {
+                                            const active = data.project_type === opt.value;
+                                            return (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setData('project_type', opt.value)}
+                                                    className={cn(
+                                                        'rounded-lg border p-2.5 text-left transition-colors',
+                                                        active
+                                                            ? 'border-[#46797b] bg-[#46797b]/10 ring-1 ring-[#46797b]'
+                                                            : 'bg-background hover:bg-muted',
+                                                    )}
+                                                >
+                                                    <p className="text-xs font-semibold text-foreground">{opt.title}</p>
+                                                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                                                        {opt.desc}
+                                                    </p>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Proyek Pembangunan &amp; Desain-Bangun akan muncul di pilihan Site Visit karyawan lapangan.
+                                    </p>
                                 </div>
 
                                 <div className="sm:col-span-2">

@@ -37,6 +37,7 @@ export type EmployeeRecord = {
     employee_code: string;
     position: string;
     department?: string | null;
+    work_type?: 'kantor' | 'lapangan' | null;
     join_date?: string | null;
     employment_status: 'tetap' | 'kontrak' | 'magang';
     annual_leave_quota: number;
@@ -410,7 +411,8 @@ export function EmployeeManagement({
                                                     </span>
                                                     <span className="font-medium text-foreground">{emp.position}</span>
                                                     <span className="text-xs text-muted-foreground">
-                                                        Divisi {emp.department || 'Perencanaan'}
+                                                        Divisi {emp.department || 'Perencanaan'} ·{' '}
+                                                        {emp.work_type === 'lapangan' ? 'Lapangan' : 'Kantor'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -616,6 +618,7 @@ function EmployeeFormModal({
         employee_code: employee?.employee_code ?? nextEmployeeCode,
         position: employee?.position ?? 'Arsitek',
         department: employee?.department ?? 'Perencanaan',
+        work_type: (employee?.work_type ?? 'kantor') as 'kantor' | 'lapangan',
         join_date: employee?.join_date ?? todayStr,
         employment_status: (employee?.employment_status ?? 'tetap') as 'tetap' | 'kontrak' | 'magang',
         annual_leave_quota: employee?.annual_leave_quota ?? 12,
@@ -802,6 +805,18 @@ function EmployeeFormModal({
                                             {dept}
                                         </option>
                                     ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-medium">Tipe Karyawan *</label>
+                                <select
+                                    value={data.work_type}
+                                    onChange={(e) => setData('work_type', e.target.value as 'kantor' | 'lapangan')}
+                                    className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:border-ring"
+                                >
+                                    <option value="kantor">Karyawan Kantor (Absen Kantor / Site Visit)</option>
+                                    <option value="lapangan">Karyawan Lapangan (Site Visit Proyek Pembangunan)</option>
                                 </select>
                             </div>
 

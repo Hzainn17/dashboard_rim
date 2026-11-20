@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\LeaveRequest;
 use App\Models\OfficeSetting;
 use App\Models\Overtime;
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -149,6 +150,7 @@ class HandleInertiaRequests extends Middleware
                     'status' => $todayOvertime->status,
                 ] : null,
                 'hasLeaveToday' => $hasLeaveToday,
+                'workType' => $user?->employee?->work_type ?? 'kantor',
                 'unclosedPastAttendance' => $unclosedPastAtt ? [
                     'id' => $unclosedPastAtt->id,
                     'date' => $unclosedPastAtt->date->format('Y-m-d'),
@@ -160,6 +162,9 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'notifications' => $user ? $this->buildNotifications($user) : [],
+            'siteVisitProjects' => fn (): array => $user && Schema::hasColumn('projects', 'project_type')
+                ? Project::siteVisitOptionsFor($user)
+                : [],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

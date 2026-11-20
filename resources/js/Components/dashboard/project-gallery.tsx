@@ -25,6 +25,7 @@ export interface UnifiedProjectCardData {
     client_name: string;
     location?: string | null;
     category: string;
+    project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun' | null;
     phase?: string;
     status?: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
     cover_image_url?: string | null;
@@ -114,6 +115,12 @@ export function ProjectGallery({ role }: { role: Role }) {
     );
 }
 
+export const projectTypeBadge: Record<string, { label: string; className: string }> = {
+    perencanaan: { label: 'Perencanaan', className: 'bg-sky-600/90 text-white' },
+    pembangunan: { label: 'Pembangunan', className: 'bg-amber-600/90 text-white' },
+    desain_bangun: { label: 'Desain & Bangun', className: 'bg-emerald-700/90 text-white' },
+};
+
 export function ProjectCard({ project }: { project: UnifiedProjectCardData }) {
     const daysLeft = typeof project.days_left === 'number' ? project.days_left : null;
     const urgent = daysLeft !== null && daysLeft <= 7 && project.status !== 'done';
@@ -154,6 +161,16 @@ export function ProjectCard({ project }: { project: UnifiedProjectCardData }) {
                         {phaseLabel}
                     </span>
                 </div>
+                {project.project_type && projectTypeBadge[project.project_type] && (
+                    <span
+                        className={cn(
+                            'absolute bottom-3 left-3 rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase shadow-sm',
+                            projectTypeBadge[project.project_type].className,
+                        )}
+                    >
+                        {projectTypeBadge[project.project_type].label}
+                    </span>
+                )}
             </div>
 
             <div className="flex flex-1 flex-col gap-3 p-4">

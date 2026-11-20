@@ -24,7 +24,7 @@ import { formatClock, formatCooldown, formatDuration, useAttendance, type Attend
 const TARGET_MS = 9 * 60 * 60 * 1000;
 
 export function AttendanceWidget() {
-    const { auth, officeSetting, projects: dbProjects = [] } = usePage<
+    const { auth, officeSetting, siteVisitProjects = [] } = usePage<
         PageProps & {
             officeSetting?: {
                 office_name: string;
@@ -32,17 +32,16 @@ export function AttendanceWidget() {
                 longitude: number;
                 radius_meters: number;
             };
-            projects?: Array<{
-                id: number;
-                name: string;
-                location?: string | null;
-            }>;
         }
     >().props;
-    const projectItems = dbProjects.map((p) => ({
+    const isFieldWorker = auth?.workType === 'lapangan';
+    const toItem = (p: (typeof siteVisitProjects)[number]) => ({
         value: String(p.id),
         label: p.location ? `${p.name} (${p.location})` : p.name,
-    }));
+    });
+    const fieldProjectItems = siteVisitProjects.filter((p) => p.group === 'lapangan').map(toItem);
+    const planningProjectItems = siteVisitProjects.filter((p) => p.group === 'perencanaan').map(toItem);
+    const projectItems = [...fieldProjectItems, ...planningProjectItems];
     const gps = useOfficeGps(
         Number(officeSetting?.latitude ?? -6.2087634),
         Number(officeSetting?.longitude ?? 106.845599),
@@ -251,13 +250,35 @@ export function AttendanceWidget() {
                                     <SelectValue placeholder="Pilih proyek lapangan" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {projectItems.map((p) => (
+                                    {fieldProjectItems.length > 0 && (
+                                        <div className="px-2 pt-1.5 pb-1 text-[10px] font-semibold tracking-wider text-primary uppercase">
+                                            Proyek Pembangunan (Lapangan)
+                                        </div>
+                                    )}
+                                    {fieldProjectItems.map((p) => (
+                                        <SelectItem key={p.value} value={p.value}>
+                                            {p.label}
+                                        </SelectItem>
+                                    ))}
+                                    {planningProjectItems.length > 0 && (
+                                        <div className="mt-1 border-t px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+                                            Proyek Perencanaan (Survey)
+                                        </div>
+                                    )}
+                                    {planningProjectItems.map((p) => (
                                         <SelectItem key={p.value} value={p.value}>
                                             {p.label}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {projectItems.length === 0 && (
+                                <p className="text-[11px] text-amber-700">
+                                    {isFieldWorker
+                                        ? 'Belum ada proyek Pembangunan yang sedang berjalan. Hubungi admin.'
+                                        : 'Belum ada proyek aktif.'}
+                                </p>
+                            )}
                         </div>
 
                         {displayedPhotoUrl ? (
