@@ -80,7 +80,7 @@ jobs:
 
       - name: Sync ONLY production files to VPS (excluding PRD, agent files, .md, tests)
         run: |
-          rsync -az --delete \
+          rsync -rlz --no-perms --no-owner --no-group --omit-dir-times --delete \
             -e "ssh -p ${{ secrets.VPS_PORT || 22 }} -o StrictHostKeyChecking=no" \
             --exclude='.git' \
             --exclude='.github' \
@@ -97,9 +97,10 @@ jobs:
             --exclude='node_modules' \
             --exclude='vendor' \
             --exclude='storage' \
+            --exclude='bootstrap/cache' \
             --exclude='public/uploads' \
             --exclude='public/hot' \
-            --exclude='database/*.sqlite' \
+            --exclude='database/*.sqlite*' \
             --exclude='*.md' \
             --exclude='boost.json' \
             --exclude='phpunit.xml' \
@@ -109,11 +110,14 @@ jobs:
         run: |
           ssh -p ${{ secrets.VPS_PORT || 22 }} -o StrictHostKeyChecking=no "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
             set -e
+            umask 0002
             cd "${{ secrets.VPS_PATH }}"
-            mkdir -p storage/framework/{cache,sessions,views} storage/logs public/uploads/{avatars,company,portfolios,project-covers,site-visits,client-briefs}
+            mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/logs public/uploads/{avatars,company,portfolios,project-covers,site-visits,client-briefs}
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
             php artisan migrate --force
+            php artisan optimize:clear
             php artisan optimize
             php artisan storage:link || true
-            sudo systemctl reload php8.4-fpm || true
+            chmod -R ug+rwX storage bootstrap/cache database public/uploads 2>/dev/null || true
+            sudo -n systemctl reload php8.4-fpm 2>/dev/null || true
           EOF
