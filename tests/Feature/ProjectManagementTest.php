@@ -701,5 +701,18 @@ class ProjectManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Bpk. Ahmad Wijaya')
             ->assertSee('Lahan berkontur menghadap lembah.');
+
+        // 5. Direct server-side PDF download returns valid PDF binary for both blank and filled modes
+        $blankPdf = $this->actingAs($admin)
+            ->get(route('projects.brief.print', ['project' => $project->id, 'mode' => 'blank', 'download' => 1]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $blankPdf->getContent());
+
+        $filledPdf = $this->actingAs($admin)
+            ->get(route('projects.brief.print', ['project' => $project->id, 'mode' => 'filled', 'download' => 1]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $filledPdf->getContent());
     }
 }

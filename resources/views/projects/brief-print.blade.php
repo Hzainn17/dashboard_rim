@@ -551,9 +551,9 @@
                 Versi Terisi Jawaban
             </a>
         </div>
-        <button type="button" onclick="window.print()" class="btn btn-primary">
-            Download / Cetak PDF
-        </button>
+        <a href="{{ route('projects.brief.print', ['project' => $project->id, 'mode' => $mode, 'download' => 1]) }}" class="btn btn-primary">
+            Download PDF Otomatis
+        </a>
     </div>
 
     <!-- PAGE 1: COVER DOCUMENT -->

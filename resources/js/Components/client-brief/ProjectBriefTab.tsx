@@ -477,28 +477,24 @@ export function ProjectBriefTab({
                             )}
                         >
                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                Cetak / Download PDF
+                                Download PDF Langsung
                             </span>
                             <div className="grid grid-cols-2 gap-1.5">
                                 <a
-                                    href={`${brief.print_url}?mode=blank`}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                    href={`${brief.print_url}?mode=blank&download=1`}
                                     className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border bg-background px-2 text-[11px] font-semibold text-foreground hover:bg-muted"
-                                    title="Blanko kosong untuk wawancara survey lapangan"
+                                    title="Langsung unduh file PDF blanko kosong untuk wawancara survey lapangan"
                                 >
                                     <Printer className="size-3.5 text-[#46797b] shrink-0" />
-                                    <span className="truncate">Blanko</span>
+                                    <span className="truncate">PDF Blanko</span>
                                 </a>
                                 <a
-                                    href={`${brief.print_url}?mode=filled`}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                    href={`${brief.print_url}?mode=filled&download=1`}
                                     className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border bg-background px-2 text-[11px] font-semibold text-foreground hover:bg-muted"
-                                    title="PDF berisi jawaban klien / hasil survey"
+                                    title="Langsung unduh file PDF berisi jawaban klien / hasil survey"
                                 >
                                     <FileText className="size-3.5 text-[#46797b] shrink-0" />
-                                    <span className="truncate">Terisi</span>
+                                    <span className="truncate">PDF Terisi</span>
                                 </a>
                             </div>
                         </div>

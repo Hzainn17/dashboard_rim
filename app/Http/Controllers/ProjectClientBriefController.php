@@ -7,9 +7,11 @@ use App\Models\OfficeSetting;
 use App\Models\Project;
 use App\Models\ProjectClientBrief;
 use App\Services\ClientBriefTemplate;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -135,9 +137,9 @@ class ProjectClientBriefController extends Controller
     }
 
     /**
-     * Studio-branded A4 printable PDF view of the Client Brief (blank survey form or filled answers).
+     * Studio-branded A4 PDF download or printable preview of the Client Brief (blank survey form or filled answers).
      */
-    public function print(Request $request, Project $project): View
+    public function print(Request $request, Project $project): View|HttpResponse
     {
         if (! $project->isAccessibleBy($request->user())) {
             abort(403);
@@ -162,7 +164,13 @@ class ProjectClientBriefController extends Controller
             $sections[$sec][] = $field;
         }
 
-        return view('projects.brief-print', [
+        $logoRel = $office->company_logo_url ?: '/rim-projects-logo.png';
+        $logoPath = public_path(ltrim($logoRel, '/'));
+        $logoDataUri = is_file($logoPath)
+            ? 'data:'.(mime_content_type($logoPath) ?: 'image/png').';base64,'.base64_encode((string) file_get_contents($logoPath))
+            : null;
+
+        $viewData = [
             'project' => $project,
             'brief' => $brief,
             'office' => $office,
@@ -173,7 +181,20 @@ class ProjectClientBriefController extends Controller
             'mode' => $mode,
             'hasResponses' => $hasResponses,
             'isInterior' => $buildingType === 'interior',
-        ]);
+            'logoDataUri' => $logoDataUri,
+        ];
+
+        if ($request->boolean('download')) {
+            $slugName = Str::slug($project->name) ?: 'proyek';
+            $modeLabel = $mode === 'blank' ? 'blanko-survey' : 'data-eksisting';
+            $filename = "Formulir-Klien-{$slugName}-{$modeLabel}.pdf";
+
+            return Pdf::loadView('projects.brief-pdf', $viewData)
+                ->setPaper('a4', 'portrait')
+                ->download($filename);
+        }
+
+        return view('projects.brief-print', $viewData);
     }
 
     /**
