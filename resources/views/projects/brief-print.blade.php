@@ -254,8 +254,7 @@
         }
 
         .section-block {
-            margin-bottom: 22px;
-            page-break-inside: avoid;
+            margin-bottom: 20px;
         }
         .section-heading {
             display: flex;
@@ -270,6 +269,8 @@
             padding: 6px 12px;
             border-radius: 6px;
             margin: 0 0 12px;
+            page-break-after: avoid;
+            break-after: avoid;
         }
         .section-num {
             background: rgba(255, 255, 255, 0.22);
@@ -281,6 +282,7 @@
         .field-row {
             margin-bottom: 11px;
             page-break-inside: avoid;
+            break-inside: avoid;
         }
         .field-inline {
             display: grid;
@@ -445,10 +447,16 @@
             font-weight: 600;
         }
 
+        .survey-table tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
         @media print {
             body {
                 background: #ffffff;
                 padding: 0;
+                margin: 0;
             }
             .toolbar { display: none !important; }
             .page {
@@ -456,13 +464,43 @@
                 border-radius: 0;
                 margin: 0;
                 max-width: none;
+                overflow: visible !important;
             }
             .cover-page {
-                min-height: 264mm;
+                min-height: 0;
+                height: 258mm;
+                overflow: hidden !important;
                 page-break-after: always;
+                break-after: page;
+            }
+            .cover-banner {
+                height: 170px;
+                padding: 22px 32px;
+            }
+            .cover-body {
+                padding: 28px 34px 24px;
+            }
+            .cover-title {
+                font-size: 38px;
+            }
+            .cover-subtitle {
+                font-size: 28px;
+            }
+            .cover-meta-grid {
+                margin-top: 22px;
+                padding: 14px 18px;
+            }
+            .cover-toc {
+                margin-top: 20px;
+            }
+            .cover-footer {
+                margin-top: 20px;
+                padding-top: 12px;
+                padding-bottom: 12px;
             }
             .content-sheet {
-                padding: 4mm 2mm;
+                padding: 0;
+                overflow: visible !important;
             }
         }
     </style>
@@ -572,11 +610,14 @@
 
                     <div class="field-row">
                         @if(in_array($type, ['text', 'number', 'url', 'compass'], true))
+                            @php
+                                $displayVal = is_array($val) ? implode(', ', array_filter(array_map('strval', $val))) : (string) ($val ?? '');
+                            @endphp
                             <div class="field-inline">
                                 <span class="field-label">{{ $field['label'] }}</span>
                                 <span>:</span>
                                 <span class="field-value-line">
-                                    {{ !$isBlank && $val !== null && $val !== '' ? $val : '' }}
+                                    {{ !$isBlank && $displayVal !== '' ? $displayVal : '' }}
                                 </span>
                             </div>
                         @elseif($type === 'select')
@@ -677,7 +718,10 @@
                                     <div class="blank-line"></div>
                                 </div>
                             @else
-                                <div class="answer-box">{{ $val ?: '—' }}</div>
+                                @php
+                                    $textVal = is_array($val) ? implode(', ', array_filter(array_map('strval', $val))) : (string) ($val ?? '');
+                                @endphp
+                                <div class="answer-box">{{ $textVal !== '' ? $textVal : '—' }}</div>
                             @endif
                         @endif
                     </div>
