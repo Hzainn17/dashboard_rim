@@ -6,7 +6,7 @@
     <style>
         @page {
             size: A4 portrait;
-            margin: 16mm 14mm 16mm 14mm;
+            margin: 15mm 14mm 15mm 14mm;
         }
         @page :first {
             margin: 0;
@@ -17,8 +17,8 @@
         body {
             font-family: DejaVu Sans, Helvetica, Arial, sans-serif;
             color: #1c2426;
-            font-size: 9.5pt;
-            line-height: 1.45;
+            font-size: 8.8pt;
+            line-height: 1.4;
             margin: 0;
             padding: 0;
         }
@@ -26,12 +26,12 @@
         /* RUNNING HEADER & FOOTER FOR CONTENT PAGES */
         .pdf-header {
             position: fixed;
-            top: -11mm;
+            top: -10.5mm;
             left: 0;
             right: 0;
-            height: 8mm;
-            border-bottom: 1.5pt solid #46797b;
-            font-size: 7.5pt;
+            height: 7.5mm;
+            border-bottom: 1.2pt solid #46797b;
+            font-size: 7.2pt;
             color: #46797b;
         }
         .pdf-header table {
@@ -40,13 +40,13 @@
         }
         .pdf-footer {
             position: fixed;
-            bottom: -11mm;
+            bottom: -10.5mm;
             left: 0;
             right: 0;
-            height: 7mm;
+            height: 6.5mm;
             border-top: 0.5pt solid #cbd8da;
-            padding-top: 2mm;
-            font-size: 7.5pt;
+            padding-top: 1.8mm;
+            font-size: 7.2pt;
             color: #64748b;
         }
         .pdf-footer table {
@@ -68,7 +68,7 @@
         }
         .cover-banner {
             background: #1f3d40;
-            padding: 14mm 16mm 12mm 16mm;
+            padding: 13mm 16mm 11mm 16mm;
             border-bottom: 4pt solid #46797b;
             color: #ffffff;
         }
@@ -80,49 +80,50 @@
             display: inline-block;
             background: #ffffff;
             padding: 5pt 10pt;
-            border-radius: 6pt;
+            border-radius: 5pt;
         }
         .cover-logo {
-            height: 26pt;
+            height: 25pt;
             width: auto;
+            display: block;
         }
         .cover-doc-tag {
-            font-size: 8.5pt;
+            font-size: 8.2pt;
             font-weight: bold;
-            letter-spacing: 1.2pt;
+            letter-spacing: 1.1pt;
             text-transform: uppercase;
             color: #d6ecec;
             text-align: right;
         }
         .cover-body {
-            padding: 16mm 16mm 12mm 16mm;
+            padding: 15mm 16mm 12mm 16mm;
         }
         .cover-accent {
             width: 44pt;
-            height: 4pt;
+            height: 3.5pt;
             background: #46797b;
-            margin-bottom: 14pt;
+            margin-bottom: 13pt;
         }
         .cover-title {
-            font-size: 32pt;
+            font-size: 31pt;
             font-weight: bold;
             line-height: 1.05;
             color: #162224;
             margin: 0;
         }
         .cover-subtitle {
-            font-size: 22pt;
+            font-size: 21pt;
             font-weight: normal;
             letter-spacing: 2pt;
             color: #46797b;
-            margin: 6pt 0 0 0;
+            margin: 5pt 0 0 0;
         }
         .cover-meta-box {
-            margin-top: 22pt;
+            margin-top: 20pt;
             background: #f4f9f9;
-            border: 1pt solid #d5e5e5;
-            border-left: 4pt solid #46797b;
-            padding: 12pt 14pt;
+            border: 0.8pt solid #d5e5e5;
+            border-left: 3.5pt solid #46797b;
+            padding: 11pt 14pt;
         }
         .cover-meta-table {
             width: 100%;
@@ -131,10 +132,10 @@
         .cover-meta-table td {
             width: 50%;
             vertical-align: top;
-            padding: 5pt 8pt 5pt 0;
+            padding: 4.5pt 8pt 4.5pt 0;
         }
         .meta-label {
-            font-size: 7.5pt;
+            font-size: 7.2pt;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.7pt;
@@ -142,14 +143,14 @@
             margin-bottom: 2pt;
         }
         .meta-value {
-            font-size: 10.5pt;
+            font-size: 10pt;
             font-weight: bold;
             color: #162224;
         }
         .cover-toc-title {
-            margin-top: 22pt;
+            margin-top: 20pt;
             margin-bottom: 8pt;
-            font-size: 8pt;
+            font-size: 7.8pt;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.9pt;
@@ -161,61 +162,82 @@
         }
         .cover-toc-table td {
             width: 50%;
-            padding: 4pt 8pt 4pt 0;
-            font-size: 9.5pt;
-            color: #2c3d40;
+            padding: 3.5pt 8pt 3.5pt 0;
             vertical-align: middle;
         }
-        .toc-badge {
-            display: inline-block;
-            width: 16pt;
-            height: 16pt;
-            line-height: 16pt;
+        .toc-item-table {
+            border-collapse: collapse;
+        }
+        .toc-item-table td {
+            width: auto;
+            padding: 0;
+            vertical-align: middle;
+        }
+        .toc-num-cell {
+            width: 17pt;
+            height: 17pt;
             text-align: center;
             background: #e6f0f0;
             color: #46797b;
-            font-size: 8pt;
+            font-size: 7.8pt;
             font-weight: bold;
-            border-radius: 8pt;
-            margin-right: 6pt;
+            border-radius: 9pt;
+        }
+        .toc-text-cell {
+            padding-left: 7pt !important;
+            font-size: 9pt;
+            color: #2c3d40;
         }
         .cover-footer-box {
             position: absolute;
             left: 16mm;
             right: 16mm;
-            bottom: 16mm;
-            border-top: 1.5pt solid #1c2426;
-            border-bottom: 1.5pt solid #1c2426;
-            padding: 10pt 0;
-            font-size: 8.5pt;
+            bottom: 15mm;
+            border-top: 1.2pt solid #1c2426;
+            border-bottom: 1.2pt solid #1c2426;
+            padding: 9pt 0;
+            font-size: 8.2pt;
             color: #3a4a4d;
             line-height: 1.45;
         }
 
         /* CONTENT SECTIONS */
         .section-block {
-            margin-bottom: 12pt;
+            margin-bottom: 11pt;
         }
-        .section-heading {
+        .section-keep {
+            page-break-inside: avoid;
+        }
+        .section-heading-table {
+            width: 100%;
+            border-collapse: collapse;
             background: #46797b;
             color: #ffffff;
-            padding: 5pt 9pt;
-            font-size: 9.5pt;
+            margin-bottom: 7pt;
+            page-break-after: avoid;
+        }
+        .section-heading-table td {
+            padding: 4.5pt 8pt;
+            vertical-align: middle;
+        }
+        .section-num-cell {
+            width: 22pt;
+            background: #2f5759;
+            text-align: center;
+            font-size: 8pt;
+            font-weight: bold;
+            color: #ffffff;
+        }
+        .section-title-cell {
+            font-size: 9pt;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.6pt;
-            margin-bottom: 8pt;
-            page-break-after: avoid;
-        }
-        .section-num {
-            display: inline-block;
-            background: #2f5759;
-            padding: 1pt 5pt;
-            font-size: 8pt;
-            margin-right: 6pt;
+            color: #ffffff;
+            padding-left: 8pt !important;
         }
         .field-row {
-            margin-bottom: 8pt;
+            margin-bottom: 6.5pt;
             page-break-inside: avoid;
         }
         .inline-table {
@@ -223,107 +245,118 @@
             border-collapse: collapse;
         }
         .inline-table td {
-            padding: 2.5pt 0;
+            padding: 2pt 0;
             vertical-align: bottom;
         }
         .inline-label {
-            width: 36%;
+            width: 33%;
             font-weight: bold;
             color: #243336;
-            font-size: 9pt;
+            font-size: 8.6pt;
             padding-right: 6pt;
         }
         .inline-colon {
             width: 2%;
             color: #243336;
+            text-align: center;
         }
         .inline-val {
-            width: 62%;
-            border-bottom: 0.8pt dotted #8fa3a7;
+            width: 65%;
+            border-bottom: 0.75pt dotted #8fa3a7;
             color: #0f172a;
-            font-size: 9pt;
-            padding-left: 4pt;
+            font-size: 8.6pt;
+            padding-left: 5pt;
             padding-bottom: 1pt;
         }
         .field-block-label {
             font-weight: bold;
             color: #243336;
-            font-size: 9pt;
-            margin-bottom: 4pt;
+            font-size: 8.6pt;
+            margin-bottom: 3pt;
         }
-        .field-help {
-            font-size: 8pt;
-            color: #64748b;
+        .field-help-box {
+            border: 0.6pt dashed #b8cbce;
+            background: #f9fbfb;
+            padding: 4pt 7pt;
+            font-size: 7.8pt;
+            color: #5b7075;
             font-style: italic;
         }
         .answer-box {
-            border: 0.8pt solid #cbd7d9;
+            border: 0.75pt solid #cbd7d9;
             background: #fbfdfd;
-            padding: 6pt 8pt;
-            min-height: 28pt;
-            font-size: 9pt;
+            padding: 5pt 7pt;
+            min-height: 24pt;
+            font-size: 8.6pt;
             color: #0f172a;
         }
         .blank-line {
-            border-bottom: 0.8pt solid #94a6aa;
-            height: 17pt;
+            border-bottom: 0.75pt solid #94a6aa;
+            height: 15pt;
             width: 100%;
         }
 
         /* CHECKLIST TABLE */
         .checklist-box {
             background: #f8fbfb;
-            border: 0.8pt solid #dce8e8;
-            padding: 5pt 8pt;
+            border: 0.75pt solid #dce8e8;
+            padding: 4pt 7pt;
         }
         .checklist-table {
             width: 100%;
             border-collapse: collapse;
         }
-        .checklist-table td {
+        .checklist-table > tbody > tr > td {
             width: 50%;
-            padding: 2.5pt 6pt 2.5pt 0;
-            font-size: 8.8pt;
+            padding: 2pt 6pt 2pt 0;
             vertical-align: middle;
         }
-        .chk {
-            display: inline-block;
-            width: 9pt;
-            height: 9pt;
-            line-height: 9pt;
-            text-align: center;
-            border: 1pt solid #46797b;
+        .chk-item-table {
+            border-collapse: collapse;
+        }
+        .chk-item-table td {
+            padding: 0;
+            vertical-align: middle;
+        }
+        .chk-box-cell {
+            width: 10pt;
+            height: 10pt;
+            border: 0.9pt solid #46797b;
             background: #ffffff;
             color: #ffffff;
-            font-size: 7.5pt;
+            font-size: 7pt;
             font-weight: bold;
-            margin-right: 5pt;
-            vertical-align: middle;
+            text-align: center;
         }
-        .chk-on {
+        .chk-box-on {
             background: #46797b;
             color: #ffffff;
+        }
+        .chk-label-cell {
+            padding-left: 6pt !important;
+            font-size: 8.4pt;
+            color: #1c2426;
         }
 
         /* SURVEY TABLE */
         .survey-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 3pt;
-            font-size: 8.8pt;
+            margin-top: 2pt;
+            font-size: 8.4pt;
         }
         .survey-table th {
             background: #eaf2f2;
             color: #1c2426;
             font-weight: bold;
             text-align: left;
-            padding: 4.5pt 6pt;
-            border: 0.8pt solid #bfd0d2;
+            padding: 4pt 6pt;
+            border: 0.75pt solid #bfd0d2;
         }
         .survey-table td {
-            padding: 4.5pt 6pt;
-            border: 0.8pt solid #cbd8da;
-            height: 16pt;
+            padding: 3.5pt 6pt;
+            border: 0.75pt solid #cbd8da;
+            height: 14.5pt;
         }
         .survey-table tr {
             page-break-inside: avoid;
@@ -333,7 +366,7 @@
         .photo-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 4pt;
+            margin-top: 3pt;
         }
         .photo-table td {
             width: 33.33%;
@@ -341,26 +374,26 @@
             vertical-align: top;
         }
         .photo-card {
-            border: 0.8pt solid #d5e0e1;
+            border: 0.75pt solid #d5e0e1;
             background: #f8fafc;
             padding: 3pt;
             text-align: center;
         }
         .photo-card img {
             max-width: 100%;
-            max-height: 80pt;
+            max-height: 75pt;
         }
         .photo-caption {
-            font-size: 7.5pt;
+            font-size: 7.2pt;
             color: #475569;
             margin-top: 2pt;
         }
 
         /* SIGNATURE BLOCK */
         .signature-block {
-            margin-top: 18pt;
-            padding-top: 12pt;
-            border-top: 1.5pt solid #46797b;
+            margin-top: 14pt;
+            padding-top: 10pt;
+            border-top: 1.2pt solid #46797b;
             page-break-inside: avoid;
         }
         .signature-table {
@@ -374,19 +407,19 @@
             vertical-align: top;
         }
         .sig-title {
-            font-size: 8.5pt;
+            font-size: 8.2pt;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5pt;
             color: #243336;
         }
         .sig-space {
-            height: 48pt;
+            height: 44pt;
         }
         .sig-line {
-            border-top: 0.8pt solid #1c2426;
+            border-top: 0.75pt solid #1c2426;
             padding-top: 4pt;
-            font-size: 9pt;
+            font-size: 8.8pt;
             font-weight: bold;
         }
     </style>
@@ -478,7 +511,12 @@
                     <tr>
                         @foreach($pair as $secIdx => $secTitle)
                             <td>
-                                <span class="toc-badge">{{ $secIdx + 1 }}</span>{{ $secTitle }}
+                                <table class="toc-item-table">
+                                    <tr>
+                                        <td class="toc-num-cell">{{ $secIdx + 1 }}</td>
+                                        <td class="toc-text-cell">{{ $secTitle }}</td>
+                                    </tr>
+                                </table>
                             </td>
                         @endforeach
                         @if(count($pair) === 1)
@@ -497,11 +535,20 @@
     <!-- PAGE 2+: FORM CONTENT -->
     @php $sectionIndex = 0; @endphp
     @foreach($sections as $sectionName => $sectionFields)
-        @php $sectionIndex++; @endphp
-        <div class="section-block">
-            <div class="section-heading">
-                <span class="section-num">{{ str_pad((string) $sectionIndex, 2, '0', STR_PAD_LEFT) }}</span>{{ $sectionName }}
-            </div>
+        @php
+            $sectionIndex++;
+            $hasLargeRoomTable = collect($sectionFields)->contains(
+                fn ($f) => in_array($f['key'] ?? '', ['ruang_lantai_1', 'ruang_lantai_2'], true)
+            );
+            $keepTogether = ! $hasLargeRoomTable && count($sectionFields) <= 12;
+        @endphp
+        <div class="section-block {{ $keepTogether ? 'section-keep' : '' }}">
+            <table class="section-heading-table">
+                <tr>
+                    <td class="section-num-cell">{{ str_pad((string) $sectionIndex, 2, '0', STR_PAD_LEFT) }}</td>
+                    <td class="section-title-cell">{{ $sectionName }}</td>
+                </tr>
+            </table>
 
             @foreach($sectionFields as $field)
                 @php
@@ -533,7 +580,12 @@
                                         @foreach($pair as $opt)
                                             @php $checked = !$isBlank && (string) $val === (string) $opt; @endphp
                                             <td>
-                                                <span class="chk {{ $checked ? 'chk-on' : '' }}">{{ $checked ? 'v' : '' }}</span>{{ $opt }}
+                                                <table class="chk-item-table">
+                                                    <tr>
+                                                        <td class="chk-box-cell {{ $checked ? 'chk-box-on' : '' }}">{{ $checked ? '✓' : '' }}</td>
+                                                        <td class="chk-label-cell">{{ $opt }}</td>
+                                                    </tr>
+                                                </table>
                                             </td>
                                         @endforeach
                                         @if(count($pair) === 1)
@@ -576,7 +628,12 @@
                                             @foreach($pair as $opt)
                                                 @php $checked = !$isBlank && in_array($opt, $selectedArr, true); @endphp
                                                 <td>
-                                                    <span class="chk {{ $checked ? 'chk-on' : '' }}">{{ $checked ? 'v' : '' }}</span>{{ $opt }}
+                                                    <table class="chk-item-table">
+                                                        <tr>
+                                                            <td class="chk-box-cell {{ $checked ? 'chk-box-on' : '' }}">{{ $checked ? '✓' : '' }}</td>
+                                                            <td class="chk-label-cell">{{ $opt }}</td>
+                                                        </tr>
+                                                    </table>
                                                 </td>
                                             @endforeach
                                             @if(count($pair) === 1)
@@ -630,7 +687,7 @@
                                 @endforeach
                             </table>
                         @else
-                            <div class="field-help">Lampiran foto/dokumen dapat diunggah melalui form digital atau dilampirkan saat survey lapangan.</div>
+                            <div class="field-help-box">Lampiran foto/dokumen dapat diunggah melalui form digital atau dilampirkan saat survey lapangan.</div>
                         @endif
                     @else
                         <div class="field-block-label">{{ $field['label'] }}</div>
