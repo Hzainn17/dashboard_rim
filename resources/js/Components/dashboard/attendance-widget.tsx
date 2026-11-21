@@ -174,10 +174,10 @@ export function AttendanceWidget() {
                                     {gps.status === 'loading'
                                         ? 'Mendeteksi GPS...'
                                         : gps.status === 'error'
-                                        ? 'GPS Tidak Aktif'
-                                        : gps.isWithinRadius
-                                        ? 'Dalam Radius Kantor'
-                                        : 'Di Luar Radius Kantor'}
+                                            ? 'GPS Tidak Aktif'
+                                            : gps.isWithinRadius
+                                                ? 'Dalam Radius Kantor'
+                                                : 'Di Luar Radius Kantor'}
                                 </p>
                                 <div className="flex items-center gap-1.5">
                                     <span
@@ -222,14 +222,13 @@ export function AttendanceWidget() {
                                             : 'bg-success',
                                     )}
                                     style={{
-                                        width: `${
-                                            gps.distanceMeters !== null
-                                                ? Math.min(
-                                                      100,
-                                                      Math.round((gps.distanceMeters / Math.max(1, radiusMeters)) * 100),
-                                                  )
-                                                : 45
-                                        }%`,
+                                        width: `${gps.distanceMeters !== null
+                                            ? Math.min(
+                                                100,
+                                                Math.round((gps.distanceMeters / Math.max(1, radiusMeters)) * 100),
+                                            )
+                                            : 45
+                                            }%`,
                                     }}
                                 />
                             </div>
