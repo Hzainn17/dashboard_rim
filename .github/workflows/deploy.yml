@@ -38,7 +38,7 @@ jobs:
 
       - name: Install NPM dependencies & build production assets
         run: |
-          npm ci
+          npm ci --legacy-peer-deps
           npm run build
 
       - name: Run automated PHPUnit test suite
