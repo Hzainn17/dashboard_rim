@@ -217,7 +217,7 @@ class AttendanceController extends Controller
             );
         }
 
-        $isWeekend = $user->isOffDay($today) || $request->boolean('is_weekend');
+        $isWeekend = $user->isOffDay($today);
         $compensationType = $isWeekend ? ($validated['compensation_type'] ?? 'overtime') : 'none';
 
         $siteVisitPhotoUrl = null;

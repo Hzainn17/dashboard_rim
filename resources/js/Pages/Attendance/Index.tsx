@@ -175,8 +175,7 @@ export default function AttendanceIndex({
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [cameraOpen, setCameraOpen] = useState(false);
 
-    // Weekend mode simulation or actual weekend
-    const [weekendSim, setWeekendSim] = useState<boolean>(isWeekendToday);
+    // Compensation state when today is an official weekly off-day for this employee
     const [compensationType, setCompensationType] = useState<'overtime' | 'day_off_exchange'>('overtime');
     const [exchangeDate, setExchangeDate] = useState<string>('');
 
@@ -335,9 +334,8 @@ export default function AttendanceIndex({
                 site_visit_project_id: mode === 'site_visit' ? Number(siteProjectId) : null,
                 ...(mode === 'site_visit' && photoFile ? { site_visit_photo: photoFile } : {}),
                 notes: notes || null,
-                is_weekend: weekendSim,
-                compensation_type: weekendSim ? compensationType : 'none',
-                exchange_date: weekendSim && compensationType === 'day_off_exchange' ? exchangeDate : null,
+                compensation_type: isWeekendToday ? compensationType : 'none',
+                exchange_date: isWeekendToday && compensationType === 'day_off_exchange' ? exchangeDate : null,
             },
             { forceFormData: true, preserveScroll: true },
         );
@@ -453,25 +451,23 @@ export default function AttendanceIndex({
 
                             <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
                                 <CalendarClock className="size-4 text-primary" />
-                                <span className="text-muted-foreground">Mode Hari Kerja:</span>
-                                <button
-                                    type="button"
-                                    onClick={() => setWeekendSim(!weekendSim)}
+                                <span className="text-muted-foreground">Status Hari:</span>
+                                <span
                                     className={cn(
-                                        'rounded-md px-2 py-0.5 font-medium transition-colors',
-                                        weekendSim
+                                        'rounded-md px-2 py-0.5 font-medium',
+                                        isWeekendToday
                                             ? 'bg-amber-100 text-amber-900'
                                             : 'bg-secondary text-secondary-foreground',
                                     )}
                                 >
-                                    {weekendSim
+                                    {isWeekendToday
                                         ? isFieldWorker
                                             ? 'Hari Libur (Minggu)'
                                             : 'Akhir Pekan (Sabtu/Minggu)'
                                         : isFieldWorker
-                                        ? 'Reguler (Senin–Sabtu)'
-                                        : 'Reguler (Senin–Jumat)'}
-                                </button>
+                                        ? 'Hari Kerja (Senin–Sabtu)'
+                                        : 'Hari Kerja (Senin–Jumat)'}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -619,8 +615,8 @@ export default function AttendanceIndex({
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Weekend Compensation Selector (If Saturday/Sunday) */}
-                                        {weekendSim && !isWorking && (
+                                        {/* Weekend Compensation Selector (Automatic based on work_type & calendar day) */}
+                                        {isWeekendToday && !isWorking && (
                                             <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 p-4">
                                                 <div className="flex items-start gap-2.5">
                                                     <Sparkles className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -1024,15 +1020,6 @@ export default function AttendanceIndex({
                                                     >
                                                         <LogOut className="size-4" />
                                                         Check-out Pulang
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => confirmCheckOut(targetMinutes)}
-                                                        title={`Simulasikan selesai kerja ${officeSetting.standard_work_hours} jam penuh (${targetMinutes} menit)`}
-                                                        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-success/15 px-3 text-xs font-medium text-success transition-colors hover:bg-success/25"
-                                                    >
-                                                        <CheckCircle2 className="size-3.5" />
-                                                        Selesai 9 Jam Penuh
                                                     </button>
                                                     {!hasCompletedOvertimeToday && !isLockedDay && (
                                                         <button

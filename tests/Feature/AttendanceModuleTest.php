@@ -426,28 +426,109 @@ class AttendanceModuleTest extends TestCase
         $this->assertSame(0, Overtime::query()->where('user_id', $employee->id)->count());
     }
 
-    public function test_weekend_simulation_toggle_records_weekend_compensation_on_weekday(): void
+    public function test_weekend_compensation_is_strictly_determined_by_calendar_day_and_work_type(): void
     {
         OfficeSetting::current();
-        $employee = User::factory()->create();
-        $exchangeDate = Carbon::today()->addDays(3)->format('Y-m-d');
 
-        $this->actingAs($employee)
+        // 1. Wednesday (weekday): office worker cannot spoof is_weekend=true
+        Carbon::setTestNow(Carbon::parse('2026-11-18 08:05:00')); // Wednesday
+        $officeWorker = User::factory()->create();
+        $officeWorker->employee()->create([
+            'employee_code' => 'RIM-OFF-1',
+            'position' => 'Arsitek',
+            'department' => 'Perencanaan',
+            'work_type' => 'kantor',
+            'join_date' => '2026-01-01',
+            'base_salary' => 8_000_000,
+        ]);
+
+        $this->actingAs($officeWorker)
             ->post('/attendance/check-in', [
                 'mode' => 'office',
                 'distance_meters' => 25,
                 'is_weekend' => true,
                 'compensation_type' => 'day_off_exchange',
-                'exchange_date' => $exchangeDate,
+                'exchange_date' => '2026-11-23',
             ])
             ->assertRedirect();
 
         $this->assertDatabaseHas('attendances', [
-            'user_id' => $employee->id,
+            'user_id' => $officeWorker->id,
+            'is_weekend' => false,
+            'compensation_type' => 'none',
+            'compensation_status' => 'none',
+        ]);
+
+        // 2. Saturday: office worker IS off-day, field worker IS regular workday
+        Carbon::setTestNow(Carbon::parse('2026-11-21 08:05:00')); // Saturday
+        $officeWorker2 = User::factory()->create();
+        $officeWorker2->employee()->create([
+            'employee_code' => 'RIM-OFF-2',
+            'position' => 'Drafter',
+            'department' => 'Perencanaan',
+            'work_type' => 'kantor',
+            'join_date' => '2026-01-01',
+            'base_salary' => 6_000_000,
+        ]);
+
+        $this->actingAs($officeWorker2)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'distance_meters' => 25,
+                'compensation_type' => 'day_off_exchange',
+                'exchange_date' => '2026-11-25',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $officeWorker2->id,
             'is_weekend' => true,
             'compensation_type' => 'day_off_exchange',
             'compensation_status' => 'pending',
         ]);
+
+        $fieldWorker = User::factory()->create();
+        $fieldWorker->employee()->create([
+            'employee_code' => 'RIM-FLD-1',
+            'position' => 'Site Supervisor',
+            'department' => 'Pembangunan',
+            'work_type' => 'lapangan',
+            'join_date' => '2026-01-01',
+            'base_salary' => 7_000_000,
+        ]);
+
+        $this->actingAs($fieldWorker)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'distance_meters' => 25,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $fieldWorker->id,
+            'is_weekend' => false,
+            'compensation_type' => 'none',
+        ]);
+
+        // 3. Sunday: field worker IS off-day
+        Carbon::setTestNow(Carbon::parse('2026-11-22 08:05:00')); // Sunday
+        $this->actingAs($fieldWorker)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'distance_meters' => 25,
+                'compensation_type' => 'overtime',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'user_id' => $fieldWorker->id,
+            'date' => '2026-11-22 00:00:00',
+            'is_weekend' => true,
+            'compensation_type' => 'overtime',
+            'compensation_status' => 'pending',
+        ]);
+
+        Carbon::setTestNow();
     }
 
     public function test_site_visit_requires_photo_and_project_while_notes_are_optional(): void

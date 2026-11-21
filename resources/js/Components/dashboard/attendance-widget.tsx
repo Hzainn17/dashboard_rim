@@ -67,7 +67,6 @@ export function AttendanceWidget() {
         checkedOutAt,
         elapsedMs,
         cooldownRemainingSeconds,
-        skipCooldown,
         checkIn,
         checkOut,
         siteProject,
@@ -450,13 +449,7 @@ export function AttendanceWidget() {
                                     </button>
                                     <div className="flex items-center justify-between px-0.5 text-[11px] text-muted-foreground">
                                         {cooldownRemainingSeconds > 0 ? (
-                                            <button
-                                                type="button"
-                                                onClick={skipCooldown}
-                                                className="font-medium text-primary hover:underline"
-                                            >
-                                                Lewati jeda 1 jam (Demo)
-                                            </button>
+                                            <span>Jeda wajib sebelum lembur</span>
                                         ) : (
                                             <span className="font-medium text-success">Siap mulai lembur</span>
                                         )}
