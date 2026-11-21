@@ -7,7 +7,7 @@
     <style>
         @page {
             size: A4 portrait;
-            margin: 14mm 15mm 16mm 15mm;
+            margin: 12mm 14mm 12mm 14mm;
         }
         * { box-sizing: border-box; }
         body {
@@ -254,21 +254,25 @@
         }
 
         .section-block {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
+        }
+        .section-lead {
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .section-heading {
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 800;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             color: #ffffff;
             background: #46797b;
-            padding: 6px 12px;
+            padding: 5px 12px;
             border-radius: 6px;
-            margin: 0 0 12px;
+            margin: 0 0 10px;
             page-break-after: avoid;
             break-after: avoid;
         }
@@ -457,6 +461,8 @@
                 background: #ffffff;
                 padding: 0;
                 margin: 0;
+                font-size: 11px;
+                line-height: 1.42;
             }
             .toolbar { display: none !important; }
             .page {
@@ -468,39 +474,66 @@
             }
             .cover-page {
                 min-height: 0;
-                height: 258mm;
+                height: 242mm;
+                max-height: 242mm;
                 overflow: hidden !important;
                 page-break-after: always;
                 break-after: page;
             }
             .cover-banner {
-                height: 170px;
-                padding: 22px 32px;
+                height: 155px;
+                padding: 20px 30px;
             }
             .cover-body {
-                padding: 28px 34px 24px;
+                padding: 24px 32px 18px;
             }
             .cover-title {
-                font-size: 38px;
+                font-size: 36px;
             }
             .cover-subtitle {
-                font-size: 28px;
+                font-size: 26px;
             }
             .cover-meta-grid {
-                margin-top: 22px;
+                margin-top: 20px;
                 padding: 14px 18px;
             }
             .cover-toc {
-                margin-top: 20px;
+                margin-top: 18px;
             }
             .cover-footer {
-                margin-top: 20px;
-                padding-top: 12px;
-                padding-bottom: 12px;
+                margin-top: 16px;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                font-size: 10.5px;
             }
             .content-sheet {
                 padding: 0;
                 overflow: visible !important;
+            }
+            .running-header {
+                margin-bottom: 14px;
+                padding-bottom: 8px;
+            }
+            .section-block {
+                margin-bottom: 14px;
+            }
+            .field-row {
+                margin-bottom: 8px;
+            }
+            .survey-table td {
+                padding: 4px 8px;
+                height: 20px;
+            }
+            .blank-lines {
+                gap: 12px;
+                padding-top: 6px;
+            }
+            .signature-section {
+                margin-top: 18px;
+                padding-top: 14px;
+            }
+            .signature-space {
+                height: 52px;
             }
         }
     </style>
@@ -595,12 +628,14 @@
         @foreach($sections as $sectionName => $sectionFields)
             @php $sectionIndex++; @endphp
             <div class="section-block">
-                <h2 class="section-heading">
-                    <span class="section-num">{{ str_pad((string) $sectionIndex, 2, '0', STR_PAD_LEFT) }}</span>
-                    <span>{{ $sectionName }}</span>
-                </h2>
-
-                @foreach($sectionFields as $field)
+                @foreach($sectionFields as $fieldIdx => $field)
+                    @if($fieldIdx === 0)
+                        <div class="section-lead">
+                            <h2 class="section-heading">
+                                <span class="section-num">{{ str_pad((string) $sectionIndex, 2, '0', STR_PAD_LEFT) }}</span>
+                                <span>{{ $sectionName }}</span>
+                            </h2>
+                    @endif
                     @php
                         $key = $field['key'];
                         $type = $field['type'];
@@ -725,6 +760,9 @@
                             @endif
                         @endif
                     </div>
+                    @if($fieldIdx === 0)
+                        </div>
+                    @endif
                 @endforeach
             </div>
         @endforeach
