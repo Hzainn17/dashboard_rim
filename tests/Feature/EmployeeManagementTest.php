@@ -14,7 +14,7 @@ class EmployeeManagementTest extends TestCase
 
     public function test_admin_can_view_employees_with_financial_data(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create(['base_salary' => 15_000_000]);
 
         $response = $this->actingAs($admin)->get('/employees');
@@ -29,6 +29,28 @@ class EmployeeManagementTest extends TestCase
         );
     }
 
+    public function test_regular_admin_cannot_access_employees_page_or_manage_employees(): void
+    {
+        $regularAdmin = User::factory()->admin()->create();
+        $target = User::factory()->create();
+
+        $this->actingAs($regularAdmin)->get('/employees')->assertForbidden();
+        $this->actingAs($regularAdmin)->post('/employees', [
+            'name' => 'Staff Baru',
+            'email' => 'staffbaru@rimstudio.com',
+            'password' => 'password123',
+            'role' => 'employee',
+            'employee_code' => 'RIM-098',
+            'position' => 'Drafter',
+            'join_date' => '2026-01-15',
+            'employment_status' => 'tetap',
+            'annual_leave_quota' => 12,
+            'base_salary' => 5000000,
+        ])->assertForbidden();
+        $this->actingAs($regularAdmin)->patch("/employees/{$target->id}/toggle-status")->assertForbidden();
+        $this->actingAs($regularAdmin)->delete("/employees/{$target->id}")->assertForbidden();
+    }
+
     public function test_regular_employee_cannot_access_employees_page(): void
     {
         $employee = User::factory()->create();
@@ -40,7 +62,7 @@ class EmployeeManagementTest extends TestCase
 
     public function test_admin_can_register_new_employee(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
 
         $response = $this->actingAs($admin)->post('/employees', [
             'name' => 'Arif Budiman',
@@ -96,7 +118,7 @@ class EmployeeManagementTest extends TestCase
 
     public function test_admin_can_update_employee_and_toggle_status(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $target = User::factory()->create(['name' => 'Old Name']);
         Employee::factory()->for($target)->create(['employee_code' => 'RIM-020']);
 

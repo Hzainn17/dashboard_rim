@@ -154,6 +154,15 @@ class DashboardController extends Controller
 
         $activities = ActivityLog::query()
             ->with('user:id,name,photo_url')
+            ->when(! $user->isSuperAdmin(), fn ($q) => $q->whereNotIn('action', [
+                'payroll.generated',
+                'payroll.item_updated',
+                'employee.created',
+                'employee.updated',
+                'employee.status_toggled',
+                'employee.deleted',
+                'settings.updated',
+            ]))
             ->latest()
             ->take(6)
             ->get()

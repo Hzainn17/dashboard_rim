@@ -40,11 +40,19 @@ class User extends Authenticatable
     }
 
     /**
-     * Determine whether the user is a studio admin.
+     * Determine whether the user is a Super Admin (full studio, HR, and payroll access).
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === UserRole::SuperAdmin;
+    }
+
+    /**
+     * Determine whether the user is a studio admin (Super Admin or regular Admin).
      */
     public function isAdmin(): bool
     {
-        return $this->role === UserRole::Admin;
+        return in_array($this->role, [UserRole::SuperAdmin, UserRole::Admin], true);
     }
 
     /**

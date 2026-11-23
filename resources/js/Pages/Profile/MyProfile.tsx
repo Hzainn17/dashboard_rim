@@ -88,7 +88,8 @@ interface Props {
 
 export default function MyProfile({ profile, kpi, slips }: Props) {
     const { auth, flash } = usePage<PageProps>().props;
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);

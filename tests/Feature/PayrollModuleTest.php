@@ -20,7 +20,7 @@ class PayrollModuleTest extends TestCase
 
     public function test_admin_can_generate_payroll_aggregating_attendance_and_approved_overtime(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create([
             'base_salary' => 15_000_000,
             'fixed_allowance' => 1_000_000,
@@ -92,9 +92,30 @@ class PayrollModuleTest extends TestCase
         $this->actingAs($employee)->post('/payroll/generate', [])->assertForbidden();
     }
 
+    public function test_regular_admin_cannot_access_payroll_management_but_can_access_operational_admin_pages(): void
+    {
+        $regularAdmin = User::factory()->admin()->create();
+
+        // Blocked from Super Admin only modules: Payroll, Data Karyawan, Approvals, Monitoring, & Settings
+        $this->actingAs($regularAdmin)->get('/payroll')->assertForbidden();
+        $this->actingAs($regularAdmin)->post('/payroll/generate', [])->assertForbidden();
+        $this->actingAs($regularAdmin)->get('/employees')->assertForbidden();
+        $this->actingAs($regularAdmin)->get('/attendance/approvals')->assertForbidden();
+        $this->actingAs($regularAdmin)->get('/attendance/monitoring')->assertForbidden();
+        $this->actingAs($regularAdmin)->get('/settings')->assertForbidden();
+
+        // Allowed on regular Admin pages: Ringkasan, Proyek Perencanaan & Lapangan, Presensi Harian, Kalender Tim, Profil Saya
+        $this->actingAs($regularAdmin)->get('/dashboard')->assertOk();
+        $this->actingAs($regularAdmin)->get('/projects')->assertOk();
+        $this->actingAs($regularAdmin)->get('/field-projects')->assertOk();
+        $this->actingAs($regularAdmin)->get('/attendance')->assertOk();
+        $this->actingAs($regularAdmin)->get('/calendar')->assertOk();
+        $this->actingAs($regularAdmin)->get('/my-profile')->assertOk();
+    }
+
     public function test_admin_can_override_bonus_finalize_mark_paid_and_export_bank_csv(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create(['base_salary' => 12_000_000]);
 
         $employee = User::factory()->create(['name' => 'Siti Rahma']);
@@ -158,7 +179,7 @@ class PayrollModuleTest extends TestCase
 
     public function test_admin_can_select_specific_employees_when_generating_payroll(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create(['base_salary' => 15_000_000]);
 
         $budi = User::factory()->create(['name' => 'Budi']);
@@ -190,7 +211,7 @@ class PayrollModuleTest extends TestCase
 
     public function test_employee_can_view_own_finalized_slip_and_cannot_view_others_slip(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
 
         $emp1 = User::factory()->create(['name' => 'Budi']);
@@ -239,7 +260,7 @@ class PayrollModuleTest extends TestCase
 
     public function test_admin_can_generate_thr_following_kemnaker_proration_rules(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create([
             'join_date' => '2024-01-01',
             'base_salary' => 12_000_000,

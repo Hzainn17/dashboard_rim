@@ -15,7 +15,7 @@ class StudioSettingTest extends TestCase
 
     public function test_admin_can_view_studio_settings_page(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
         OfficeSetting::current();
 
@@ -50,7 +50,7 @@ class StudioSettingTest extends TestCase
 
     public function test_admin_can_update_studio_gps_and_work_settings(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
 
         $response = $this->actingAs($admin)->put('/settings', [

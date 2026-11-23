@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { Construction } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/Components/ui/sheet';
 import { FlashToast } from '@/Components/ui/flash-toast';
-import { adminNav, karyawanNav, type Role } from '@/lib/studio-data';
+import { adminNav, isAdminRole, karyawanNav, type Role } from '@/lib/studio-data';
+import { PageProps } from '@/types';
 import { AttendanceProvider } from './attendance-context';
 import { DashboardOverview } from './dashboard-overview';
 import { SidebarContent } from './sidebar-content';
@@ -29,7 +30,12 @@ export function AppShell({
     initialActive?: string;
     children?: React.ReactNode;
 }) {
-    const role: Role = initialRole;
+    const { auth } = usePage<PageProps>().props;
+    const role: Role = auth?.user?.role
+        ? isAdminRole(auth.user.role)
+            ? 'admin'
+            : 'karyawan'
+        : initialRole;
     const [active, setActive] = useState(initialActive);
     const [mobileOpen, setMobileOpen] = useState(false);
 

@@ -129,8 +129,8 @@ export default function CalendarIndex({
     currentYear,
     filterType,
 }: Props) {
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
-    const isAdmin = auth.user.role === 'admin';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const today = new Date();
     const todayKey = toDateKey(
@@ -987,7 +987,7 @@ export default function CalendarIndex({
                             )}
 
                             <div className="mt-2 flex items-center justify-between border-t pt-3">
-                                {!selectedEventForDetail.is_virtual && (isAdmin || auth.user.role === 'admin') ? (
+                                {!selectedEventForDetail.is_virtual && isAdmin ? (
                                     <button
                                         type="button"
                                         onClick={() => handleDeleteEvent(selectedEventForDetail)}

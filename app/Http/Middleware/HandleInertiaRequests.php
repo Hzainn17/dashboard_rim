@@ -183,13 +183,14 @@ class HandleInertiaRequests extends Middleware
     {
         $query = ActivityLog::query()->latest('id');
 
-        if (! $user->isAdmin()) {
+        if (! $user->isSuperAdmin()) {
             $query->whereNotIn('action', [
                 'payroll.generated',
                 'payroll.item_updated',
                 'employee.created',
                 'employee.updated',
                 'employee.status_toggled',
+                'employee.deleted',
                 'settings.updated',
             ]);
         }
@@ -202,10 +203,11 @@ class HandleInertiaRequests extends Middleware
             ->map(function (ActivityLog $log) use ($user, $readAt): array {
                 $action = $log->action ?? '';
                 $url = match (true) {
-                    str_starts_with($action, 'payroll.') => $user->isAdmin() ? route('payroll.index') : route('my-profile.index'),
+                    str_starts_with($action, 'payroll.') => $user->isSuperAdmin() ? route('payroll.index') : route('my-profile.index'),
+                    str_starts_with($action, 'employee.') => $user->isSuperAdmin() ? route('employees.index') : route('dashboard'),
                     str_starts_with($action, 'project.') => route('projects.index'),
                     str_starts_with($action, 'calendar.') => route('calendar.index'),
-                    str_starts_with($action, 'attendance.'), str_starts_with($action, 'leave.'), str_starts_with($action, 'overtime.') => $user->isAdmin() ? route('attendance.approvals') : route('attendance.index'),
+                    str_starts_with($action, 'attendance.'), str_starts_with($action, 'leave.'), str_starts_with($action, 'overtime.') => $user->isSuperAdmin() ? route('attendance.approvals') : route('attendance.index'),
                     default => route('dashboard'),
                 };
 

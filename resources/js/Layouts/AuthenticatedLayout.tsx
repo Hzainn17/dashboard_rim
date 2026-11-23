@@ -43,8 +43,9 @@ export default function AuthenticatedLayout({
     const companyLogo = studio?.logo_url || '/rim-projects-logo.png';
 
     // Perspective switch (defaults to user role, allows previewing the other perspective)
+    const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
     const [perspective, setPerspective] = useState<'admin' | 'employee'>(
-        user?.role === 'admin' ? 'admin' : 'employee'
+        isAdmin ? 'admin' : 'employee'
     );
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [presensiDropdownOpen, setPresensiDropdownOpen] = useState(false);
@@ -259,7 +260,7 @@ export default function AuthenticatedLayout({
                                     {user?.name || 'Pengguna'}
                                 </p>
                                 <p className="truncate text-[11px] text-muted-foreground capitalize">
-                                    {user?.employee?.position || (user?.role === 'admin' ? 'Admin Studio' : 'Karyawan')}
+                                    {user?.employee?.position || (user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin Studio' : 'Karyawan')}
                                 </p>
                             </div>
                             <ChevronDown className="size-3 text-muted-foreground" />

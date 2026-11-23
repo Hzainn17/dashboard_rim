@@ -26,14 +26,14 @@ class EmployeeController extends Controller
      */
     public function index(Request $request): Response
     {
-        $isAdmin = (bool) $request->user()?->isAdmin();
+        $isSuperAdmin = (bool) $request->user()?->isSuperAdmin();
 
         $users = User::query()
             ->with('employee')
             ->orderBy('id')
             ->get();
 
-        $employees = $users->map(function (User $user) use ($isAdmin): array {
+        $employees = $users->map(function (User $user) use ($isSuperAdmin): array {
             $emp = $user->employee;
 
             $data = [
@@ -53,7 +53,7 @@ class EmployeeController extends Controller
                 'annual_leave_quota' => $emp?->annual_leave_quota ?? 12,
             ];
 
-            if ($isAdmin) {
+            if ($isSuperAdmin) {
                 $data['base_salary'] = (float) ($emp?->base_salary ?? 0);
                 $data['fixed_allowance'] = (float) ($emp?->fixed_allowance ?? 0);
                 $data['overtime_rate_per_hour'] = (float) ($emp?->overtime_rate_per_hour ?? 25000);
@@ -193,7 +193,7 @@ class EmployeeController extends Controller
      */
     public function toggleStatus(Request $request, User $employee): RedirectResponse
     {
-        if (! $request->user()?->isAdmin()) {
+        if (! $request->user()?->isSuperAdmin()) {
             abort(403);
         }
 
@@ -222,7 +222,7 @@ class EmployeeController extends Controller
      */
     public function destroy(Request $request, User $employee): RedirectResponse
     {
-        if (! $request->user()?->isAdmin()) {
+        if (! $request->user()?->isSuperAdmin()) {
             abort(403);
         }
 

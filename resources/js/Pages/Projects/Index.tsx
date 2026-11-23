@@ -127,8 +127,8 @@ export default function ProjectIndex({
     },
 }: Props) {
     const { flash } = usePage<PageProps>().props;
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
-    const isAdmin = auth.user.role === 'admin';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
     const isFieldSection = section === 'field';
     const [search, setSearch] = useState(filters.search || '');
     const [selectedCategory, setSelectedCategory] = useState(filters.category || 'all');

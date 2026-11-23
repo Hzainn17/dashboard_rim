@@ -87,7 +87,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_admin_approving_weekend_day_off_exchange_auto_locks_selected_weekday(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $employee = User::factory()->create();
         $exchangeDate = Carbon::today()->addDays(4)->format('Y-m-d');
 
@@ -123,7 +123,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_employee_can_start_and_stop_overtime_and_admin_can_approve(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $employee = User::factory()->create();
         $project = Project::factory()->create(['owner_id' => $admin->id]);
 
@@ -156,7 +156,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_admin_can_view_approvals_and_monitoring_pages(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)
             ->get('/attendance/approvals')
@@ -183,7 +183,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_admin_can_manually_input_or_adjust_overtime_in_monitoring(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $employee = User::factory()->create();
         $project = Project::factory()->create(['owner_id' => $admin->id]);
 
@@ -211,7 +211,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_employee_can_request_check_in_adjustment_and_admin_can_approve(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $employee = User::factory()->create();
 
         // Employee checked in at 09:15 but arrived at 08:00
@@ -387,7 +387,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_employee_cannot_start_overtime_when_on_leave_today(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $employee = User::factory()->create();
         $project = Project::factory()->create(['owner_id' => $admin->id]);
 

@@ -24,8 +24,8 @@ class EndToEndWorkflowTest extends TestCase
         $workDate = Carbon::parse('2026-11-18 08:00:00');
         $this->travelTo($workDate);
 
-        // 1. Admin configures Studio GPS & Overtime settings
-        $admin = User::factory()->admin()->create(['name' => 'Principal Admin']);
+        // 1. Super Admin configures Studio GPS & Overtime settings
+        $admin = User::factory()->superAdmin()->create(['name' => 'Principal Admin']);
         Employee::factory()->for($admin)->create();
 
         $this->actingAs($admin)

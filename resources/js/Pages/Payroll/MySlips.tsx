@@ -46,7 +46,8 @@ function formatRp(amount: number): string {
 }
 
 export default function MySlips({ auth, slips }: Props) {
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     return (
         <AppShell initialRole={initialRole} initialActive="slip">

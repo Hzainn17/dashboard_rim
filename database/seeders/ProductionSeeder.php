@@ -37,7 +37,7 @@ class ProductionSeeder extends Seeder
             [
                 'name' => $adminName,
                 'password' => Hash::make($adminPassword),
-                'role' => UserRole::Admin,
+                'role' => UserRole::SuperAdmin,
                 'is_active' => true,
                 'phone' => '08123456789',
             ]

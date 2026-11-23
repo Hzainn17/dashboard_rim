@@ -19,7 +19,8 @@ class CreateAdminCommand extends Command
     protected $signature = 'make:admin 
                             {--name= : The name of the admin user}
                             {--email= : The email address of the admin user}
-                            {--password= : The password for the admin user}';
+                            {--password= : The password for the admin user}
+                            {--role=super_admin : The admin role (super_admin or admin)}';
 
     /**
      * The console command description.
@@ -55,11 +56,14 @@ class CreateAdminCommand extends Command
             return self::FAILURE;
         }
 
+        $roleOption = $this->option('role') ?: 'super_admin';
+        $role = $roleOption === 'admin' ? UserRole::Admin : UserRole::SuperAdmin;
+
         $user = User::query()->create([
             'name' => (string) $name,
             'email' => (string) $email,
             'password' => Hash::make((string) $password),
-            'role' => UserRole::Admin,
+            'role' => $role,
             'is_active' => true,
         ]);
 

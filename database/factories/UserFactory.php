@@ -48,6 +48,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the user is a studio super admin (full access including Payroll & HR).
+     */
+    public function superAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => UserRole::SuperAdmin,
+        ]);
+    }
+
+    /**
      * Indicate that the user is a studio admin.
      */
     public function admin(): static

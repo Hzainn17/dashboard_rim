@@ -57,7 +57,8 @@ const radiusPresets = [50, 100, 150, 250, 500];
 
 export default function SettingsIndex({ auth, setting, portfolios = [] }: Props) {
     const { flash } = usePage<PageProps>().props;
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const { data, setData, put, processing, errors } = useForm({
         office_name: setting.office_name || 'RIM Studio Arsitektur',

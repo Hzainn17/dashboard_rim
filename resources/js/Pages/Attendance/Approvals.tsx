@@ -107,7 +107,8 @@ export default function AttendanceApprovals({
     counts,
 }: Props) {
     const { auth, flash } = usePage<PageProps>().props;
-    const initialRole = auth?.user?.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth?.user?.role === 'super_admin' || auth?.user?.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const [activeTab, setActiveTab] = useState<'site_visit' | 'leave' | 'overtime' | 'adjustment'>('site_visit');
 

@@ -14,6 +14,14 @@ import {
 
 export type Role = 'admin' | 'karyawan';
 
+export function isAdminRole(role?: string | null): boolean {
+    return role === 'super_admin' || role === 'admin';
+}
+
+export function isSuperAdminRole(role?: string | null): boolean {
+    return role === 'super_admin';
+}
+
 export type NavItem = {
     id: string;
     label: string;
@@ -39,6 +47,15 @@ export const adminNav: NavItem[] = [
     { id: 'kalender', label: 'Kalender Studio', icon: CalendarDays },
     { id: 'payroll', label: 'Payroll Gaji', icon: Banknote },
     { id: 'pengaturan', label: 'Pengaturan Studio', icon: Settings },
+];
+
+export const regularAdminNav: NavItem[] = [
+    { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
+    { id: 'presensi-harian', label: 'Presensi Harian', icon: MapPinCheck },
+    { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
+    { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
+    { id: 'kalender', label: 'Kalender Tim', icon: CalendarDays },
+    { id: 'profil', label: 'Profil Saya', icon: User },
 ];
 
 export const karyawanNav: NavItem[] = [

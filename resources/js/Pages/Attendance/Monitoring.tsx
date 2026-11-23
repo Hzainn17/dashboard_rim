@@ -108,7 +108,8 @@ export default function AttendanceMonitoring({
     filters,
 }: Props) {
     const { auth, flash } = usePage<PageProps>().props;
-    const initialRole = auth?.user?.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth?.user?.role === 'super_admin' || auth?.user?.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const [adjustModalOpen, setAdjustModalOpen] = useState(false);
     const [adjustTab, setAdjustTab] = useState<'attendance' | 'overtime'>('attendance');

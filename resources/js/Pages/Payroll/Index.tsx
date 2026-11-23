@@ -171,7 +171,8 @@ export default function PayrollIndex({
     defaults,
 }: Props) {
     const { flash } = usePage<PageProps>().props;
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
 
     const [generateModalOpen, setGenerateModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<PayrollItemRow | null>(null);

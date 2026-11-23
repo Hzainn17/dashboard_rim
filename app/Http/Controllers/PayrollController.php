@@ -613,7 +613,7 @@ class PayrollController extends Controller
         $user = $request->user();
         $item->load(['payroll', 'user.employee']);
 
-        if (! $user->isAdmin()) {
+        if (! $user->isSuperAdmin()) {
             if ($item->user_id !== $user->id || $item->payroll->isDraft()) {
                 abort(403, 'Anda tidak memiliki akses ke slip gaji ini.');
             }

@@ -85,7 +85,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/my-slips', [PayrollController::class, 'mySlips'])->name('payroll.my-slips');
     Route::get('/payroll/items/{item}/slip', [PayrollController::class, 'printSlip'])->name('payroll.slip');
 
-    Route::middleware('admin')->group(function () {
+    Route::middleware('super_admin')->group(function () {
         Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
         Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');

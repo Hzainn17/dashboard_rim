@@ -14,7 +14,7 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::factory()->admin()->create([
+        $admin = User::factory()->superAdmin()->create([
             'name' => 'Admin RIM',
             'email' => 'admin@rimstudio.com',
         ]);

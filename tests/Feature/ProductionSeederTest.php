@@ -22,6 +22,7 @@ class ProductionSeederTest extends TestCase
 
         $admin = User::first();
         $this->assertNotNull($admin);
+        $this->assertTrue($admin->isSuperAdmin());
         $this->assertTrue($admin->isAdmin());
         $this->assertTrue($admin->is_active);
     }
@@ -37,7 +38,7 @@ class ProductionSeederTest extends TestCase
         $this->assertDatabaseHas('users', [
             'email' => 'owner@rimstudio.com',
             'name' => 'Owner Studio',
-            'role' => 'admin',
+            'role' => 'super_admin',
         ]);
     }
 }

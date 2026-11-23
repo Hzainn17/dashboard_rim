@@ -2,7 +2,14 @@ import * as React from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/Components/ui/collapsible';
-import { adminNav, karyawanNav, type Role } from '@/lib/studio-data';
+import {
+    adminNav,
+    isAdminRole,
+    isSuperAdminRole,
+    karyawanNav,
+    regularAdminNav,
+    type Role,
+} from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
 import { MemberAvatar } from './member-avatar';
@@ -30,19 +37,22 @@ export function BrandMark() {
 
 export function SidebarContent({ role, active, onNavigate }: SidebarContentProps) {
     const { auth } = usePage<PageProps>().props;
+    const isSuperAdmin = isSuperAdminRole(auth?.user?.role);
+    const isAdmin = isAdminRole(auth?.user?.role) || role === 'admin';
     const isFieldWorker = auth?.workType === 'lapangan';
-    const nav =
-        role === 'admin'
-            ? adminNav
-            : karyawanNav.filter((item) => {
-                  if (isFieldWorker && item.id === 'projects') return false;
-                  if (!isFieldWorker && item.id === 'field-projects') return false;
-                  return true;
-              });
+    const nav = isSuperAdmin
+        ? adminNav
+        : isAdmin
+        ? regularAdminNav
+        : karyawanNav.filter((item) => {
+              if (isFieldWorker && item.id === 'projects') return false;
+              if (!isFieldWorker && item.id === 'field-projects') return false;
+              return true;
+          });
     const displayName = auth?.user?.name || 'Tim Studio';
     const roleLabel =
         auth?.user?.employee?.position ||
-        (role === 'admin' ? 'Admin Studio' : 'Karyawan');
+        (isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin Studio' : 'Karyawan');
 
     return (
         <div className="flex h-full flex-col">

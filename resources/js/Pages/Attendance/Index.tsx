@@ -160,8 +160,10 @@ export default function AttendanceIndex({
     const isFieldWorker = auth?.workType === 'lapangan';
     const fieldSiteProjects = siteVisitProjects.filter((p) => p.group === 'lapangan');
     const planningSiteProjects = siteVisitProjects.filter((p) => p.group === 'perencanaan');
-    const initialRole = auth?.user?.role === 'admin' ? 'admin' : 'karyawan';
-    const activeMenu = initialRole === 'admin' ? 'presensi-saya' : 'presensi-harian';
+    const isSuperAdmin = auth?.user?.role === 'super_admin';
+    const isAdmin = isSuperAdmin || auth?.user?.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
+    const activeMenu = isSuperAdmin ? 'presensi-saya' : 'presensi-harian';
 
     const [activeTab, setActiveTab] = useState<'history' | 'leave'>('history');
     const [mode, setMode] = useState<'office' | 'site_visit'>(
@@ -1210,7 +1212,7 @@ export default function AttendanceIndex({
                                                             ? 'Belum ada proyek Lapangan aktif'
                                                             : 'Belum ada proyek Perencanaan aktif'}
                                                     </option>
-                                                ) : auth?.user?.role === 'admin' ? (
+                                                ) : isAdmin ? (
                                                     <>
                                                         {projects.some((p) => p.group === 'lapangan') && (
                                                             <optgroup label="Proyek Lapangan (Pembangunan)">

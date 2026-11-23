@@ -140,7 +140,7 @@ class MyProfileTest extends TestCase
 
     public function test_admin_can_generate_thr_without_cutoff_dates(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create([
             'join_date' => Carbon::parse('2024-01-01'),
             'base_salary' => 10_000_000,
@@ -220,7 +220,7 @@ class MyProfileTest extends TestCase
 
     public function test_admin_can_view_employees_directory_and_toggle_status(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
 
         $employee = User::factory()->create(['is_active' => true]);
@@ -281,7 +281,7 @@ class MyProfileTest extends TestCase
 
     public function test_admin_can_upload_and_reset_company_logo_in_settings(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
 
         $file = UploadedFile::fake()->image('company.png', 400, 200);
@@ -316,7 +316,7 @@ class MyProfileTest extends TestCase
 
     public function test_admin_can_permanently_delete_resigned_employee(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         Employee::factory()->for($admin)->create();
 
         $resigned = User::factory()->create(['name' => 'Karyawan Resign']);

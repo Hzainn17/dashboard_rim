@@ -31,7 +31,7 @@ export type EmployeeRecord = {
     name: string;
     email: string;
     phone?: string | null;
-    role: 'admin' | 'employee';
+    role: 'super_admin' | 'admin' | 'employee';
     is_active: boolean;
     photo_url?: string | null;
     employee_code: string;
@@ -114,7 +114,7 @@ export function EmployeeManagement({
     nextEmployeeCode: string;
 }) {
     const { auth, flash } = usePage<PageProps>().props;
-    const isAdmin = auth?.user?.role === 'admin';
+    const isAdmin = auth?.user?.role === 'super_admin';
 
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'Semua' | 'tetap' | 'kontrak' | 'magang'>('Semua');
@@ -380,6 +380,12 @@ export function EmployeeManagement({
                                                             <p className="truncate font-medium text-foreground">
                                                                 {emp.name}
                                                             </p>
+                                                            {emp.role === 'super_admin' && (
+                                                                <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold text-primary">
+                                                                    <ShieldCheck className="size-3" />
+                                                                    Super Admin
+                                                                </span>
+                                                            )}
                                                             {emp.role === 'admin' && (
                                                                 <span className="inline-flex items-center gap-0.5 rounded-full bg-accent px-1.5 py-px text-[10px] font-medium text-accent-foreground">
                                                                     <ShieldCheck className="size-3" />
@@ -614,7 +620,7 @@ function EmployeeFormModal({
         email: employee?.email ?? '',
         password: '',
         phone: employee?.phone ?? '',
-        role: (employee?.role ?? 'employee') as 'admin' | 'employee',
+        role: (employee?.role ?? 'employee') as 'super_admin' | 'admin' | 'employee',
         employee_code: employee?.employee_code ?? nextEmployeeCode,
         position: employee?.position ?? 'Arsitek',
         department: employee?.department ?? 'Perencanaan',
@@ -851,11 +857,14 @@ function EmployeeFormModal({
                                 <label className="mb-1 block text-xs font-medium">Peran Akses Dashboard *</label>
                                 <select
                                     value={data.role}
-                                    onChange={(e) => setData('role', e.target.value as 'admin' | 'employee')}
+                                    onChange={(e) =>
+                                        setData('role', e.target.value as 'super_admin' | 'admin' | 'employee')
+                                    }
                                     className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:border-ring"
                                 >
                                     <option value="employee">Karyawan Studio</option>
-                                    <option value="admin">Admin Studio</option>
+                                    <option value="admin">Admin Biasa (Proyek, Presensi Harian &amp; Kalender Tim)</option>
+                                    <option value="super_admin">Super Admin (Akses Penuh Semua Fitur)</option>
                                 </select>
                             </div>
                         </div>

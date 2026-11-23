@@ -237,8 +237,8 @@ export default function ProjectShow({
     addons = [],
     clientBrief,
 }: Props) {
-    const initialRole = auth.user.role === 'admin' ? 'admin' : 'karyawan';
-    const isAdmin = auth.user.role === 'admin';
+    const isAdmin = auth.user.role === 'super_admin' || auth.user.role === 'admin';
+    const initialRole = isAdmin ? 'admin' : 'karyawan';
     const isOwnerOrLead =
         isAdmin ||
         project.owner.id === auth.user.id ||

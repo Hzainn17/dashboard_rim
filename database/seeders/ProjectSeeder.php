@@ -18,7 +18,7 @@ class ProjectSeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::query()->where('role', UserRole::Admin)->firstOrFail();
+        $admin = User::query()->whereIn('role', [UserRole::SuperAdmin, UserRole::Admin])->firstOrFail();
         $employees = User::query()->where('role', UserRole::Employee)->orderBy('id')->get();
 
         $budi = $employees->firstWhere('email', 'budi@rimstudio.com') ?? $employees->get(0) ?? $admin;
