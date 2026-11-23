@@ -58,9 +58,10 @@ class CalendarController extends Controller
                 ])->values()->all(),
             ]);
 
-        // Integrate project deadlines automatically
+        // Integrate project deadlines automatically (exclude pre-dealing survey projects)
         $projectDeadlines = Project::query()
             ->with('members.employee')
+            ->where('status', '!=', 'survey')
             ->whereNotNull('due_date')
             ->whereBetween('due_date', [$rangeStart->toDateString(), $rangeEnd->toDateString()])
             ->get()
@@ -120,10 +121,10 @@ class CalendarController extends Controller
                 ]],
             ]);
 
-        // Integrate Project Stage design deadlines automatically
+        // Integrate Project Stage design deadlines automatically (exclude pre-dealing survey projects)
         $stageDeadlines = ProjectStage::query()
             ->with(['project.members.employee'])
-            ->whereHas('project')
+            ->whereHas('project', fn ($q) => $q->where('status', '!=', 'survey'))
             ->where(function ($q) use ($rangeStart, $rangeEnd): void {
                 $q->whereBetween('update_design_date', [$rangeStart->toDateString(), $rangeEnd->toDateString()])
                     ->orWhereBetween('client_response_date', [$rangeStart->toDateString(), $rangeEnd->toDateString()]);

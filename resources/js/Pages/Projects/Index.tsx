@@ -60,6 +60,7 @@ interface TeamMemberOption {
 
 interface Metrics {
     total_projects: number;
+    survey_projects?: number;
     ongoing_projects: number;
     review_projects: number;
     done_projects: number;
@@ -133,7 +134,7 @@ export default function ProjectIndex({
     const [selectedCategory, setSelectedCategory] = useState(filters.category || 'all');
     const [selectedStatus, setSelectedStatus] = useState(filters.status || 'all');
     const [selectedType, setSelectedType] = useState(filters.type || 'all');
-    const [activeTab, setActiveTab] = useState(filters.tab || (isAdmin ? 'all' : 'my'));
+    const [activeTab, setActiveTab] = useState(filters.tab === 'survey' ? 'survey' : 'active');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     const applyFilters = (
@@ -182,7 +183,8 @@ export default function ProjectIndex({
 
     const handleTabChange = (tab: string) => {
         setActiveTab(tab);
-        applyFilters({ tab });
+        setSelectedStatus('all');
+        applyFilters({ tab, status: 'all' });
     };
 
     // Modal Form State
@@ -444,31 +446,43 @@ export default function ProjectIndex({
                 {/* Filter & Search Bar */}
                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        {/* Tab Switcher: Semua vs Proyek Saya */}
+                        {/* Tab Switcher: Proyek Aktif vs Tahap Survey */}
                         <div className="inline-flex rounded-lg border bg-muted/40 p-1">
                             <button
                                 type="button"
-                                onClick={() => handleTabChange('all')}
+                                onClick={() => handleTabChange('active')}
                                 className={cn(
                                     'rounded-md px-3.5 py-1.5 text-xs font-medium transition',
-                                    activeTab === 'all'
+                                    activeTab === 'active'
                                         ? 'bg-background text-foreground shadow-xs'
                                         : 'text-muted-foreground hover:text-foreground'
                                 )}
                             >
-                                Semua Proyek Studio
+                                Proyek Aktif
                             </button>
                             <button
                                 type="button"
-                                onClick={() => handleTabChange('my')}
+                                onClick={() => handleTabChange('survey')}
                                 className={cn(
-                                    'rounded-md px-3.5 py-1.5 text-xs font-medium transition',
-                                    activeTab === 'my'
+                                    'inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-medium transition',
+                                    activeTab === 'survey'
                                         ? 'bg-background text-foreground shadow-xs'
                                         : 'text-muted-foreground hover:text-foreground'
                                 )}
                             >
-                                Proyek Saya
+                                <span>Tahap Survey</span>
+                                {(metrics.survey_projects ?? 0) > 0 && (
+                                    <span
+                                        className={cn(
+                                            'rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+                                            activeTab === 'survey'
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-muted text-muted-foreground'
+                                        )}
+                                    >
+                                        {metrics.survey_projects}
+                                    </span>
+                                )}
                             </button>
                         </div>
 
@@ -497,19 +511,20 @@ export default function ProjectIndex({
                                 )}
                             </form>
 
-                            <select
-                                value={selectedStatus}
-                                onChange={(e) => handleStatusChange(e.target.value)}
-                                className="h-9 rounded-lg border bg-background px-3 text-xs font-medium text-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
-                            >
-                                <option value="all">Semua Status</option>
-                                <option value="survey">Tahap Survey</option>
-                                <option value="ongoing">Sedang Berjalan</option>
-                                <option value="review">Asistensi / Review</option>
-                                <option value="planning">Perencanaan</option>
-                                <option value="done">Selesai</option>
-                                <option value="on_hold">Ditunda</option>
-                            </select>
+                            {activeTab === 'active' && (
+                                <select
+                                    value={selectedStatus}
+                                    onChange={(e) => handleStatusChange(e.target.value)}
+                                    className="h-9 rounded-lg border bg-background px-3 text-xs font-medium text-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                                >
+                                    <option value="all">Semua Status</option>
+                                    <option value="ongoing">Sedang Berjalan</option>
+                                    <option value="review">Asistensi / Review</option>
+                                    <option value="planning">Perencanaan</option>
+                                    <option value="done">Selesai</option>
+                                    <option value="on_hold">Ditunda</option>
+                                </select>
+                            )}
 
                             <select
                                 value={selectedType}

@@ -60,7 +60,10 @@ class ProjectController extends Controller
         $category = $request->string('category')->trim()->value();
         $status = $request->string('status')->trim()->value();
         $projectType = $request->string('type')->trim()->value();
-        $tab = $request->input('tab', $isAdmin ? 'all' : 'my');
+        $tab = $request->input('tab', 'active');
+        if (! in_array($tab, ['active', 'survey'], true)) {
+            $tab = 'active';
+        }
 
         $sectionTypes = $section === 'field'
             ? Project::FIELD_TYPES
@@ -73,7 +76,7 @@ class ProjectController extends Controller
                 'tasks as done_tasks_count' => fn ($q) => $q->where('status', 'done'),
             ]);
 
-        if (! $isAdmin || $tab === 'my') {
+        if (! $isAdmin) {
             $query->where(function ($q) use ($user): void {
                 $q->where('owner_id', $user->id)
                     ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));
@@ -95,8 +98,12 @@ class ProjectController extends Controller
             });
         }
 
-        if ($status && $status !== 'all') {
+        if ($tab === 'survey') {
+            $query->where('status', 'survey');
+        } elseif ($status && $status !== 'all') {
             $query->where('status', $status);
+        } else {
+            $query->where('status', '!=', 'survey');
         }
 
         if ($projectType === 'lapangan') {
@@ -107,18 +114,27 @@ class ProjectController extends Controller
             $query->whereIn('project_type', $sectionTypes);
         }
 
-        $allProjectsForMetrics = Project::query()
-            ->whereIn('project_type', $sectionTypes)
-            ->get();
+        $metricsQuery = Project::query()
+            ->whereIn('project_type', $sectionTypes);
+
+        if (! $isAdmin) {
+            $metricsQuery->where(function ($q) use ($user): void {
+                $q->where('owner_id', $user->id)
+                    ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));
+            });
+        }
+
+        $allProjectsForMetrics = $metricsQuery->get();
         $today = Carbon::today();
 
         $metrics = [
-            'total_projects' => $allProjectsForMetrics->count(),
+            'total_projects' => $allProjectsForMetrics->where('status', '!=', 'survey')->count(),
+            'survey_projects' => $allProjectsForMetrics->where('status', 'survey')->count(),
             'ongoing_projects' => $allProjectsForMetrics->where('status', 'ongoing')->count(),
             'review_projects' => $allProjectsForMetrics->where('status', 'review')->count(),
             'done_projects' => $allProjectsForMetrics->where('status', 'done')->count(),
             'urgent_projects' => $allProjectsForMetrics->filter(function (Project $p) use ($today): bool {
-                return $p->status !== 'done' && $p->due_date && $p->due_date->diffInDays($today, false) <= 0 && $today->diffInDays($p->due_date, false) <= 7;
+                return ! in_array($p->status, ['done', 'survey'], true) && $p->due_date && $p->due_date->diffInDays($today, false) <= 0 && $today->diffInDays($p->due_date, false) <= 7;
             })->count(),
         ];
 
@@ -201,10 +217,10 @@ class ProjectController extends Controller
                 'stages' => fn ($q) => $q->orderBy('order'),
             ])
             ->whereIn('project_type', $sectionTypes)
-            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
+            ->whereIn('status', ['planning', 'ongoing', 'review'])
             ->orderBy('start_date');
 
-        if (! $isAdmin || $tab === 'my') {
+        if (! $isAdmin) {
             $timelineQuery->where(function ($q) use ($user): void {
                 $q->where('owner_id', $user->id)
                     ->orWhereHas('members', fn ($mq) => $mq->where('users.id', $user->id));

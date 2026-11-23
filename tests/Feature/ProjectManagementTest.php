@@ -715,4 +715,51 @@ class ProjectManagementTest extends TestCase
             ->assertHeader('content-type', 'application/pdf');
         $this->assertStringStartsWith('%PDF-', $filledPdf->getContent());
     }
+
+    public function test_survey_projects_are_excluded_from_timeline_and_separated_into_survey_tab(): void
+    {
+        $admin = User::factory()->admin()->create();
+        Employee::factory()->for($admin)->create();
+
+        $activeProject = Project::factory()->create([
+            'owner_id' => $admin->id,
+            'name' => 'Rumah Dealing Aktif',
+            'project_type' => 'perencanaan',
+            'status' => 'ongoing',
+        ]);
+
+        $surveyProject = Project::factory()->create([
+            'owner_id' => $admin->id,
+            'name' => 'Rumah Pra-Dealing Survey',
+            'project_type' => 'perencanaan',
+            'status' => 'survey',
+        ]);
+
+        // Default active tab: shows active project only, timeline excludes survey project
+        $this->actingAs($admin)
+            ->get('/projects')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Index')
+                ->where('filters.tab', 'active')
+                ->where('metrics.survey_projects', 1)
+                ->has('projects', 1)
+                ->where('projects.0.id', $activeProject->id)
+                ->has('timelineProjects', 1)
+                ->where('timelineProjects.0.id', $activeProject->id)
+            );
+
+        // Dedicated survey tab: shows only survey project, timeline still excludes survey
+        $this->actingAs($admin)
+            ->get('/projects?tab=survey')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Index')
+                ->where('filters.tab', 'survey')
+                ->has('projects', 1)
+                ->where('projects.0.id', $surveyProject->id)
+                ->has('timelineProjects', 1)
+                ->where('timelineProjects.0.id', $activeProject->id)
+            );
+    }
 }
