@@ -202,20 +202,31 @@ class AttendanceController extends Controller
         }
 
         $hasCoords = isset($validated['latitude'], $validated['longitude']);
-        $distance = $hasCoords
-            ? $this->calculateHaversineMeters(
-                (float) $validated['latitude'],
-                (float) $validated['longitude'],
-                (float) $officeSetting->latitude,
-                (float) $officeSetting->longitude,
-            )
-            : ($validated['distance_meters'] ?? 45);
+        $distance = null;
 
-        if ($validated['mode'] === 'office' && $distance > $officeSetting->radius_meters) {
-            return redirect()->back()->with(
-                'error',
-                "Jarak Anda ({$distance}m) berada di luar radius kantor ({$officeSetting->radius_meters}m).",
-            );
+        if ($validated['mode'] === 'office') {
+            if (! $hasCoords && ! isset($validated['distance_meters'])) {
+                return redirect()->back()->with(
+                    'error',
+                    'Izin lokasi (GPS) browser wajib diaktifkan untuk Check-in Kantor. Silakan izinkan akses lokasi lalu coba lagi.',
+                );
+            }
+
+            $distance = $hasCoords
+                ? $this->calculateHaversineMeters(
+                    (float) $validated['latitude'],
+                    (float) $validated['longitude'],
+                    (float) $officeSetting->latitude,
+                    (float) $officeSetting->longitude,
+                )
+                : (int) $validated['distance_meters'];
+
+            if ($distance > $officeSetting->radius_meters) {
+                return redirect()->back()->with(
+                    'error',
+                    "Jarak Anda ({$distance}m) berada di luar radius kantor ({$officeSetting->radius_meters}m).",
+                );
+            }
         }
 
         $isWeekend = $user->isOffDay($today) || (app()->isLocal() && $request->boolean('is_weekend'));
@@ -302,22 +313,27 @@ class AttendanceController extends Controller
             $officeSetting = OfficeSetting::current();
             $hasCoords = isset($validated['latitude'], $validated['longitude']);
 
-            if ($hasCoords || isset($validated['distance_meters'])) {
-                $distance = $hasCoords
-                    ? $this->calculateHaversineMeters(
-                        (float) $validated['latitude'],
-                        (float) $validated['longitude'],
-                        (float) $officeSetting->latitude,
-                        (float) $officeSetting->longitude,
-                    )
-                    : (int) $validated['distance_meters'];
+            if (! $hasCoords && ! isset($validated['distance_meters'])) {
+                return redirect()->back()->with(
+                    'error',
+                    'Izin lokasi (GPS) browser wajib diaktifkan untuk Check-out Kantor, atau gunakan opsi "Pulang dari Site Visit" dengan foto bukti lokasi.',
+                );
+            }
 
-                if ($distance > $officeSetting->radius_meters) {
-                    return redirect()->back()->with(
-                        'error',
-                        "Jarak Anda ({$distance}m) di luar radius kantor ({$officeSetting->radius_meters}m). Check-out kantor wajib di area studio, atau gunakan opsi 'Pulang dari Site Visit' dengan foto bukti lokasi.",
-                    );
-                }
+            $distance = $hasCoords
+                ? $this->calculateHaversineMeters(
+                    (float) $validated['latitude'],
+                    (float) $validated['longitude'],
+                    (float) $officeSetting->latitude,
+                    (float) $officeSetting->longitude,
+                )
+                : (int) $validated['distance_meters'];
+
+            if ($distance > $officeSetting->radius_meters) {
+                return redirect()->back()->with(
+                    'error',
+                    "Jarak Anda ({$distance}m) di luar radius kantor ({$officeSetting->radius_meters}m). Check-out kantor wajib di area studio, atau gunakan opsi 'Pulang dari Site Visit' dengan foto bukti lokasi.",
+                );
             }
         }
 

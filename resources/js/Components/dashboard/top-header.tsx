@@ -121,7 +121,7 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
 
                 <button
                     type="button"
-                    onClick={() => checkIn()}
+                    onClick={() => router.visit(route('attendance.index'))}
                     disabled={!!isWorking}
                     className={cn(
                         'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',

@@ -41,6 +41,7 @@ class AttendanceModuleTest extends TestCase
         $this->actingAs($user)
             ->post('/attendance/check-out', [
                 'simulated_minutes' => 480,
+                'distance_meters' => 35,
             ])
             ->assertRedirect();
 
@@ -968,5 +969,45 @@ class AttendanceModuleTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('sidebarBadges.approvals', 0)
             );
+    }
+
+    public function test_office_checkin_and_checkout_are_blocked_when_browser_gps_is_denied(): void
+    {
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $employee = User::factory()->create();
+
+        // 1. Check-in office WITHOUT GPS coordinates (browser denied location) -> blocked!
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseCount('attendances', 0);
+
+        // 2. Check-in office WITH valid GPS inside radius -> succeeds
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('success');
+
+        // 3. Check-out office WITHOUT GPS coordinates (browser denied location) -> blocked!
+        $this->actingAs($employee)
+            ->post('/attendance/check-out', [
+                'simulated_minutes' => 540,
+            ])
+            ->assertSessionHas('error');
+
+        $attendance = Attendance::query()->where('user_id', $employee->id)->firstOrFail();
+        $this->assertNull($attendance->check_out_at);
     }
 }

@@ -99,10 +99,14 @@ export function AttendanceWidget() {
     const progress = Math.min(100, (elapsed / TARGET_MS) * 100);
     const overtime = Math.max(0, elapsed - TARGET_MS);
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
-    const siteReady = mode === 'office' || (!!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url));
+    const siteReady =
+        mode === 'office'
+            ? gps.status === 'ready' && gps.isWithinRadius
+            : !!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url);
 
     const isOfficeOutOfRadius =
         isWorking && mode === 'office' && gps.status === 'ready' && !gps.isWithinRadius;
+    const isOfficeGpsMissing = isWorking && mode === 'office' && gps.status !== 'ready';
 
     const handleCheckOutClick = () => {
         if (isOfficeOutOfRadius) {
@@ -417,11 +421,12 @@ export function AttendanceWidget() {
                             ) : (
                                 <button
                                     type="button"
+                                    disabled={isOfficeGpsMissing}
                                     onClick={handleCheckOutClick}
-                                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-primary/35 bg-card text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/30"
+                                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-primary/35 bg-card text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <LogOut className="size-4 text-primary" aria-hidden="true" />
-                                    Check-out
+                                    {isOfficeGpsMissing ? 'Aktifkan Izin GPS untuk Check-out' : 'Check-out'}
                                 </button>
                             )}
                             <div className="flex items-center justify-between px-0.5 text-[11px] text-muted-foreground">
@@ -512,7 +517,15 @@ export function AttendanceWidget() {
                             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-xs transition-colors outline-none hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <LogIn className="size-4" aria-hidden="true" />
-                            {mode === 'office' ? 'Check-in Kantor' : 'Check-in Site Visit'}
+                            {mode === 'office'
+                                ? gps.status === 'loading'
+                                    ? 'Mendeteksi GPS…'
+                                    : gps.status !== 'ready'
+                                    ? 'Aktifkan Izin Lokasi (GPS)'
+                                    : !gps.isWithinRadius
+                                    ? `Di Luar Radius (${gps.distanceMeters}m)`
+                                    : 'Check-in Kantor'
+                                : 'Check-in Site Visit'}
                         </button>
                     )}
                 </div>

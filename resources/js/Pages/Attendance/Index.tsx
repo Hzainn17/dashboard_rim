@@ -367,7 +367,10 @@ export default function AttendanceIndex({
         task_description: '',
     });
 
-    const canCheckInSiteVisit = mode === 'office' || (!!siteProjectId && !!photoFile);
+    const canCheckInSiteVisit =
+        mode === 'office'
+            ? gps.status === 'ready' && gps.isWithinRadius
+            : !!siteProjectId && !!photoFile;
 
     const handleCheckIn = () => {
         if (!canCheckInSiteVisit) {
@@ -402,6 +405,11 @@ export default function AttendanceIndex({
         todayAttendance?.mode === 'office' &&
         gps.status === 'ready' &&
         !gps.isWithinRadius;
+
+    const isOfficeGpsMissingForCheckout =
+        isWorking &&
+        todayAttendance?.mode === 'office' &&
+        gps.status !== 'ready';
 
     const canShowSplitOvertime =
         isWorking &&
@@ -1233,18 +1241,36 @@ export default function AttendanceIndex({
                                                     className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     <LogIn className="size-4" />
-                                                    {hasCheckedOut
-                                                        ? 'Check-in Ulang Hari Ini'
-                                                        : mode === 'office'
-                                                        ? 'Check-in Kantor Sekarang'
+                                                    {mode === 'office'
+                                                        ? gps.status === 'loading'
+                                                            ? 'Mendeteksi Lokasi GPS…'
+                                                            : gps.status !== 'ready'
+                                                            ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
+                                                            : !gps.isWithinRadius
+                                                            ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
+                                                            : hasCheckedOut
+                                                            ? 'Check-in Ulang Hari Ini'
+                                                            : 'Check-in Kantor Sekarang'
                                                         : !siteProjectId
                                                         ? 'Pilih Proyek Terlebih Dahulu'
                                                         : !photoFile
                                                         ? 'Wajib Ambil / Lampirkan Foto Lokasi'
+                                                        : hasCheckedOut
+                                                        ? 'Check-in Ulang Site Visit'
                                                         : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : (
                                                 <div className="flex w-full flex-col gap-2">
+                                                    {isOfficeGpsMissingForCheckout && (
+                                                        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                                            <span>
+                                                                {gps.status === 'loading'
+                                                                    ? 'Sedang mendeteksi lokasi GPS Anda…'
+                                                                    : 'Izin lokasi (GPS) browser belum aktif. Aktifkan izin lokasi browser lalu klik tombol GPS untuk Check-out Kantor.'}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                     {isOfficeOutOfRadiusForCheckout && (
                                                         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
                                                             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -1260,7 +1286,7 @@ export default function AttendanceIndex({
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <button
                                                             type="button"
-                                                            disabled={isOfficeOutOfRadiusForCheckout}
+                                                            disabled={isOfficeOutOfRadiusForCheckout || isOfficeGpsMissingForCheckout}
                                                             onClick={handleCheckOutClick}
                                                             className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
