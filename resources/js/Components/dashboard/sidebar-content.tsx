@@ -36,7 +36,9 @@ export function BrandMark() {
 }
 
 export function SidebarContent({ role, active, onNavigate }: SidebarContentProps) {
-    const { auth } = usePage<PageProps>().props;
+    const { auth, sidebarBadges } = usePage<PageProps>().props;
+    const approvalsBadge = sidebarBadges?.approvals ?? 0;
+    const dailyReviewsBadge = sidebarBadges?.daily_reviews ?? 0;
     const isSuperAdmin = isSuperAdminRole(auth?.user?.role);
     const isAdmin = isAdminRole(auth?.user?.role) || role === 'admin';
     const isFieldWorker = auth?.workType === 'lapangan';
@@ -78,6 +80,14 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
                                         >
                                             <Icon className="size-4 shrink-0" aria-hidden="true" />
                                             <span className="flex-1 text-left">{item.label}</span>
+                                            {item.id === 'presensi' && approvalsBadge > 0 && (
+                                                <span
+                                                    aria-label={`${approvalsBadge} approval menunggu`}
+                                                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-bold text-white tabular-nums"
+                                                >
+                                                    {approvalsBadge > 99 ? '99+' : approvalsBadge}
+                                                </span>
+                                            )}
                                             <ChevronDown
                                                 className="size-3.5 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180"
                                                 aria-hidden="true"
@@ -88,7 +98,12 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
                                                 {item.children.map((child) => (
                                                     <li key={child.id}>
                                                         <NavButton active={active === child.id} onClick={() => onNavigate(child.id)}>
-                                                            {child.label}
+                                                            <span className="flex-1">{child.label}</span>
+                                                            {child.id === 'presensi-approval' && approvalsBadge > 0 && (
+                                                                <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-bold text-white tabular-nums">
+                                                                    {approvalsBadge > 99 ? '99+' : approvalsBadge}
+                                                                </span>
+                                                            )}
                                                         </NavButton>
                                                     </li>
                                                 ))}
@@ -102,7 +117,12 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
                             <li key={item.id}>
                                 <NavButton active={active === item.id} onClick={() => onNavigate(item.id)}>
                                     <Icon className="size-4 shrink-0" aria-hidden="true" />
-                                    {item.label}
+                                    <span className="flex-1">{item.label}</span>
+                                    {item.id === 'daily-tasks' && dailyReviewsBadge > 0 && (
+                                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white tabular-nums">
+                                            {dailyReviewsBadge > 99 ? '99+' : dailyReviewsBadge}
+                                        </span>
+                                    )}
                                 </NavButton>
                             </li>
                         );

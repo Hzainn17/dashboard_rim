@@ -927,4 +927,46 @@ class AttendanceModuleTest extends TestCase
         $this->assertNull($attendance->check_out_at);
         $this->assertNull($attendance->actual_work_minutes);
     }
+
+    public function test_super_admin_receives_live_pending_approval_count_in_sidebar_badges(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+        $regularAdmin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+
+        // 1 pending adjustment + 1 pending leave = 2 pending approvals
+        Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'adjustment_type' => 'check_in',
+            'adjustment_status' => 'pending',
+            'status' => 'hadir',
+        ]);
+
+        LeaveRequest::query()->create([
+            'user_id' => $employee->id,
+            'type' => 'izin',
+            'start_date' => Carbon::today()->format('Y-m-d'),
+            'end_date' => Carbon::today()->format('Y-m-d'),
+            'total_days' => 1,
+            'reason' => 'Keperluan keluarga',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('sidebarBadges.approvals', 2)
+            );
+
+        // Regular Admin does not see approval badge count
+        $this->actingAs($regularAdmin)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('sidebarBadges.approvals', 0)
+            );
+    }
 }

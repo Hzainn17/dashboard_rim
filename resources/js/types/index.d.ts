@@ -196,6 +196,10 @@ export type PageProps<
         unread: boolean;
         url: string | null;
     }>;
+    sidebarBadges?: {
+        approvals: number;
+        daily_reviews: number;
+    };
     todayUnfinishedDailyTasks?: Array<{
         id: number;
         title: string;

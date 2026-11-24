@@ -165,6 +165,10 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'notifications' => $user ? $this->buildNotifications($user) : [],
+            'sidebarBadges' => fn (): array => $user ? $this->buildSidebarBadges($user) : [
+                'approvals' => 0,
+                'daily_reviews' => 0,
+            ],
             'siteVisitProjects' => fn (): array => $user && Schema::hasColumn('projects', 'project_type')
                 ? Project::siteVisitOptionsFor($user)
                 : [],
@@ -245,5 +249,63 @@ class HandleInertiaRequests extends Middleware
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Build live pending approval & review counts for sidebar badges.
+     *
+     * @return array{approvals: int, daily_reviews: int}
+     */
+    private function buildSidebarBadges(User $user): array
+    {
+        $approvals = 0;
+
+        if ($user->isSuperAdmin()) {
+            $siteVisitOrWeekendPending = Attendance::query()
+                ->where(function ($q): void {
+                    $q->where('site_visit_status', 'pending')
+                        ->orWhere('compensation_status', 'pending');
+                })
+                ->count();
+
+            $leavePending = LeaveRequest::query()
+                ->where('status', 'pending')
+                ->count();
+
+            $overtimePending = Overtime::query()
+                ->where('status', 'pending')
+                ->count();
+
+            $adjustmentPending = Attendance::query()
+                ->where('adjustment_status', 'pending')
+                ->count();
+
+            $approvals = $siteVisitOrWeekendPending + $leavePending + $overtimePending + $adjustmentPending;
+        }
+
+        $dailyReviews = 0;
+
+        if ($user->isDivisionLead() && Schema::hasTable('daily_tasks')) {
+            $reviewQuery = DailyTask::query()
+                ->forDate(Carbon::today())
+                ->where('status', 'review');
+
+            if (! $user->isSuperAdmin()) {
+                $userDept = $user->employee?->department ?: 'Perencanaan';
+                $reviewQuery
+                    ->where(function ($q): void {
+                        $q->whereNull('review_target')
+                            ->orWhere('review_target', '!=', 'owner');
+                    })
+                    ->whereHas('user.employee', fn ($q) => $q->where('department', $userDept));
+            }
+
+            $dailyReviews = $reviewQuery->count();
+        }
+
+        return [
+            'approvals' => $approvals,
+            'daily_reviews' => $dailyReviews,
+        ];
     }
 }
