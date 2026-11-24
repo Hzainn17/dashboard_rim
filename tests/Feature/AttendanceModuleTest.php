@@ -886,4 +886,45 @@ class AttendanceModuleTest extends TestCase
             'status' => 'active',
         ]);
     }
+
+    public function test_approving_check_in_only_adjustment_does_not_auto_checkout_employee(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $employee = User::factory()->create();
+
+        $attendance = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => Carbon::today()->setTime(9, 30),
+            'check_out_at' => null,
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+        ]);
+
+        // Even if client accidentally submits adjusted_check_out_time on a check_in-only request
+        $this->actingAs($employee)
+            ->post('/attendance/adjustment', [
+                'adjustment_type' => 'check_in',
+                'date' => Carbon::today()->format('Y-m-d'),
+                'adjusted_check_in_time' => '08:00',
+                'adjusted_check_out_time' => '17:00',
+                'notes' => 'Lupa absen masuk jam 8',
+            ])
+            ->assertRedirect();
+
+        $attendance->refresh();
+        $this->assertNull($attendance->adjusted_check_out_at);
+
+        $this->actingAs($admin)
+            ->patch("/attendance/approvals/adjustment/{$attendance->id}", [
+                'action' => 'approve',
+            ])
+            ->assertRedirect();
+
+        $attendance->refresh();
+        $this->assertSame('08:00', $attendance->check_in_at->format('H:i'));
+        $this->assertNull($attendance->check_out_at);
+        $this->assertNull($attendance->actual_work_minutes);
+    }
 }

@@ -568,10 +568,12 @@ class AttendanceController extends Controller
         ]);
 
         $dateStr = Carbon::parse($validated['date'])->format('Y-m-d');
-        $adjustedIn = ! empty($validated['adjusted_check_in_time'])
+        $type = $validated['adjustment_type'];
+
+        $adjustedIn = in_array($type, ['check_in', 'full_day'], true) && ! empty($validated['adjusted_check_in_time'])
             ? Carbon::parse("{$dateStr} {$validated['adjusted_check_in_time']}")
             : null;
-        $adjustedOut = ! empty($validated['adjusted_check_out_time'])
+        $adjustedOut = in_array($type, ['check_out', 'full_day'], true) && ! empty($validated['adjusted_check_out_time'])
             ? Carbon::parse("{$dateStr} {$validated['adjusted_check_out_time']}")
             : null;
 
@@ -992,11 +994,13 @@ class AttendanceController extends Controller
                 'approved_at' => now(),
             ];
 
-            if ($attendance->adjusted_check_in_at) {
+            $type = $attendance->adjustment_type;
+
+            if (in_array($type, ['check_in', 'full_day'], true) && $attendance->adjusted_check_in_at) {
                 $updates['check_in_at'] = $attendance->adjusted_check_in_at;
             }
 
-            if ($attendance->adjusted_check_out_at) {
+            if (in_array($type, ['check_out', 'full_day'], true) && $attendance->adjusted_check_out_at) {
                 $updates['check_out_at'] = $attendance->adjusted_check_out_at;
             }
 

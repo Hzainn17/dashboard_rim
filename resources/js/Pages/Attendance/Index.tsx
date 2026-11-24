@@ -553,13 +553,30 @@ export default function AttendanceIndex({
 
     const handleAdjustmentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        adjustmentForm.post(route('attendance.adjustment'), {
-            preserveScroll: true,
-            onSuccess: () => {
-                setAdjustmentModal(false);
-                adjustmentForm.reset('notes');
+        const type = adjustmentForm.data.adjustment_type;
+        router.post(
+            route('attendance.adjustment'),
+            {
+                adjustment_type: type,
+                date: adjustmentForm.data.date,
+                adjusted_check_in_time:
+                    type === 'check_in' || type === 'full_day'
+                        ? adjustmentForm.data.adjusted_check_in_time
+                        : null,
+                adjusted_check_out_time:
+                    type === 'check_out' || type === 'full_day'
+                        ? adjustmentForm.data.adjusted_check_out_time
+                        : null,
+                notes: adjustmentForm.data.notes,
             },
-        });
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setAdjustmentModal(false);
+                    adjustmentForm.reset('notes');
+                },
+            },
+        );
     };
 
     const handleConfirmCheckoutSubmit = (e: React.FormEvent) => {
