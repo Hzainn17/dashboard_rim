@@ -1434,7 +1434,7 @@ export default function AttendanceIndex({
                                                                   : `${officeSetting.overtime_cooldown_minutes} menit`
                                                           }.`}
                                                 </span>
-                                                {isWorking && (
+                                                {canShowSplitOvertime && (
                                                     <button
                                                         type="button"
                                                         onClick={() => setSplitOvertimeModal(true)}
@@ -1448,19 +1448,15 @@ export default function AttendanceIndex({
                                         ) : cooldownSeconds > 0 ? (
                                             <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/80 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-900">
                                                 <span>
-                                                    Menunggu jeda 1 jam:{' '}
+                                                    Menunggu jeda istirahat:{' '}
                                                     <strong className="font-mono">
                                                         {Math.floor(cooldownSeconds / 60)}m{' '}
                                                         {String(cooldownSeconds % 60).padStart(2, '0')}d
                                                     </strong>
                                                 </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCooldownSeconds(0)}
-                                                    className="shrink-0 font-semibold text-primary hover:underline"
-                                                >
-                                                    Lewati Jeda (Demo)
-                                                </button>
+                                                <span className="shrink-0 text-[11px] text-amber-800/80">
+                                                    Otomatis aktif saat jeda selesai
+                                                </span>
                                             </div>
                                         ) : isOfficeGpsBlockedForOvertime ? (
                                             <div className="rounded-lg border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-xs text-destructive">
