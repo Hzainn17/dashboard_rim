@@ -755,4 +755,73 @@ class AttendanceModuleTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_office_checkout_requires_office_gps_radius_unless_site_visit_photo_proof_is_submitted(): void
+    {
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $superAdmin = User::factory()->superAdmin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $superAdmin->id]);
+
+        // Employee checks in at office inside radius
+        $this->actingAs($employee)->post('/attendance/check-in', [
+            'mode' => 'office',
+            'latitude' => -6.1755000,
+            'longitude' => 106.8271528,
+        ])->assertSessionHas('success');
+
+        // 1. Attempting normal office check-out outside radius (~1.5km away) -> blocked
+        $this->actingAs($employee)->post('/attendance/check-out', [
+            'simulated_minutes' => 540,
+            'latitude' => -6.1900000,
+            'longitude' => 106.8271528,
+        ])->assertSessionHas('error');
+
+        $attendance = Attendance::query()->where('user_id', $employee->id)->firstOrFail();
+        $this->assertNull($attendance->check_out_at);
+
+        // 2. Attempting site visit checkout without photo -> validation error
+        $this->actingAs($employee)->post('/attendance/check-out', [
+            'simulated_minutes' => 540,
+            'checkout_site_visit' => true,
+            'site_visit_project_id' => $project->id,
+        ])->assertSessionHasErrors('site_visit_photo');
+
+        // 3. Site visit checkout WITH project + photo succeeds and enters Pusat Approval
+        $photo = UploadedFile::fake()->image('pulang_site_visit.jpg', 640, 480);
+        $this->actingAs($employee)->post('/attendance/check-out', [
+            'simulated_minutes' => 540,
+            'checkout_site_visit' => true,
+            'site_visit_project_id' => $project->id,
+            'site_visit_photo' => $photo,
+            'notes' => 'Selesai survey lokasi Pak Dede',
+        ])->assertSessionHas('success');
+
+        $attendance->refresh();
+        $this->assertNotNull($attendance->check_out_at);
+        $this->assertSame($project->id, $attendance->site_visit_project_id);
+        $this->assertSame('pending', $attendance->site_visit_status);
+        $this->assertStringStartsWith('/uploads/site-visits/site_visit_checkout_', (string) $attendance->site_visit_photo_url);
+
+        // Clean up uploaded test file
+        $uploadedPath = public_path(ltrim((string) $attendance->site_visit_photo_url, '/'));
+        if (file_exists($uploadedPath)) {
+            @unlink($uploadedPath);
+        }
+
+        // Verify it appears in Super Admin's Pusat Approval -> Site Visit tab
+        $this->actingAs($superAdmin)
+            ->get('/attendance/approvals')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('counts.site_visit_pending', 1)
+                ->has('siteVisits', 1)
+            );
+    }
 }

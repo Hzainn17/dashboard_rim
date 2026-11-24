@@ -144,6 +144,7 @@ class AttendanceController extends Controller
                 'overtime_cooldown_minutes' => $officeSetting->overtime_cooldown_minutes,
             ],
             'isWeekendToday' => $user->isOffDay($today),
+            'canSimulateWeekend' => app()->isLocal(),
             'todayDate' => $today->format('Y-m-d'),
         ]);
     }
@@ -217,7 +218,7 @@ class AttendanceController extends Controller
             );
         }
 
-        $isWeekend = $user->isOffDay($today);
+        $isWeekend = $user->isOffDay($today) || (app()->isLocal() && $request->boolean('is_weekend'));
         $compensationType = $isWeekend ? ($validated['compensation_type'] ?? 'overtime') : 'none';
 
         $siteVisitPhotoUrl = null;
@@ -266,7 +267,8 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Perform daily check-out and calculate 9-hour target completion / shortage minutes.
+     * Perform daily check-out and calculate target completion / shortage minutes.
+     * Office check-ins require being inside office GPS radius unless checking out from a Site Visit with photo proof.
      */
     public function checkOut(Request $request): RedirectResponse
     {
@@ -279,9 +281,49 @@ class AttendanceController extends Controller
             ->whereNotNull('check_in_at')
             ->firstOrFail();
 
+        $validated = $request->validate([
+            'simulated_minutes' => ['nullable', 'integer', 'min:0'],
+            'latitude' => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
+            'distance_meters' => ['nullable', 'integer', 'min:0'],
+            'checkout_site_visit' => ['nullable', 'boolean'],
+            'site_visit_project_id' => ['required_if:checkout_site_visit,1,true', 'nullable', 'exists:projects,id'],
+            'site_visit_photo' => ['required_if:checkout_site_visit,1,true', 'nullable', 'image', 'max:5120'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ], [
+            'site_visit_project_id.required_if' => 'Proyek tujuan Site Visit wajib dipilih untuk check-out luar kantor.',
+            'site_visit_photo.required_if' => 'Foto bukti lokasi Site Visit wajib diambil atau dilampirkan untuk check-out luar kantor.',
+            'site_visit_photo.image' => 'Bukti lokasi harus berupa file gambar (JPG, PNG, WebP).',
+        ]);
+
+        $isCheckoutSiteVisit = $request->boolean('checkout_site_visit');
+
+        if ($attendance->mode === 'office' && ! $isCheckoutSiteVisit) {
+            $officeSetting = OfficeSetting::current();
+            $hasCoords = isset($validated['latitude'], $validated['longitude']);
+
+            if ($hasCoords || isset($validated['distance_meters'])) {
+                $distance = $hasCoords
+                    ? $this->calculateHaversineMeters(
+                        (float) $validated['latitude'],
+                        (float) $validated['longitude'],
+                        (float) $officeSetting->latitude,
+                        (float) $officeSetting->longitude,
+                    )
+                    : (int) $validated['distance_meters'];
+
+                if ($distance > $officeSetting->radius_meters) {
+                    return redirect()->back()->with(
+                        'error',
+                        "Jarak Anda ({$distance}m) di luar radius kantor ({$officeSetting->radius_meters}m). Check-out kantor wajib di area studio, atau gunakan opsi 'Pulang dari Site Visit' dengan foto bukti lokasi.",
+                    );
+                }
+            }
+        }
+
         $checkOutAt = now();
         $elapsedMinutes = max(1, (int) $attendance->check_in_at->diffInMinutes($checkOutAt));
-        $actualMinutes = $request->integer('simulated_minutes', $elapsedMinutes);
+        $actualMinutes = max(1, $request->integer('simulated_minutes', $elapsedMinutes));
         $targetMinutes = $attendance->target_work_minutes ?: $user->dailyTargetWorkMinutes();
         $shortageMinutes = $attendance->is_weekend ? 0 : max(0, $targetMinutes - $actualMinutes);
 
@@ -289,12 +331,41 @@ class AttendanceController extends Controller
             ? 'site_visit'
             : ($shortageMinutes > 0 ? 'kurang_jam' : 'hadir');
 
-        $attendance->update([
+        $updateData = [
             'check_out_at' => $checkOutAt,
             'actual_work_minutes' => $actualMinutes,
             'shortage_minutes' => $shortageMinutes,
             'status' => $status,
-        ]);
+        ];
+
+        if ($isCheckoutSiteVisit) {
+            $siteVisitPhotoUrl = $attendance->site_visit_photo_url;
+            if ($request->hasFile('site_visit_photo')) {
+                $dir = public_path('uploads/site-visits');
+                if (! File::isDirectory($dir)) {
+                    File::makeDirectory($dir, 0755, true);
+                }
+                $file = $request->file('site_visit_photo');
+                $ext = $file->guessExtension() ?: 'jpg';
+                $filename = 'site_visit_checkout_'.$user->id.'_'.$today->format('Ymd').'_'.time().'.'.$ext;
+                $file->move($dir, $filename);
+                $siteVisitPhotoUrl = "/uploads/site-visits/{$filename}";
+            }
+
+            $extraNote = trim((string) ($validated['notes'] ?? ''));
+            $checkoutNote = $extraNote !== ''
+                ? "[Pulang dari Site Visit] {$extraNote}"
+                : '[Pulang dari Site Visit] Check-out langsung dari lokasi proyek.';
+
+            $updateData['site_visit_project_id'] = (int) $validated['site_visit_project_id'];
+            $updateData['site_visit_photo_url'] = $siteVisitPhotoUrl;
+            $updateData['site_visit_status'] = 'pending';
+            $updateData['notes'] = $attendance->notes
+                ? "{$attendance->notes} | {$checkoutNote}"
+                : $checkoutNote;
+        }
+
+        $attendance->update($updateData);
 
         if ($attendance->is_weekend && $attendance->compensation_type === 'overtime') {
             Overtime::query()->create([
@@ -312,12 +383,19 @@ class AttendanceController extends Controller
 
         ActivityLog::record(
             action: 'attendance.checkout',
-            description: "{$user->name} melakukan check-out (Durasi: {$actualMinutes} menit)",
+            description: $isCheckoutSiteVisit
+                ? "{$user->name} melakukan check-out dari Site Visit luar kantor (Durasi: {$actualMinutes} menit · menunggu approval foto)"
+                : "{$user->name} melakukan check-out (Durasi: {$actualMinutes} menit)",
             reference: $attendance,
             user: $user,
         );
 
-        return redirect()->back()->with('success', 'Check-out berhasil dicatat. Terima kasih atas kerja keras Anda hari ini!');
+        return redirect()->back()->with(
+            'success',
+            $isCheckoutSiteVisit
+                ? 'Check-out dari Site Visit berhasil dicatat dan foto bukti telah dikirim ke Pusat Approval!'
+                : 'Check-out berhasil dicatat. Terima kasih atas kerja keras Anda hari ini!',
+        );
     }
 
     /**
@@ -649,7 +727,8 @@ class AttendanceController extends Controller
             ->with(['user.employee', 'siteVisitProject:id,name,location'])
             ->where(function ($q): void {
                 $q->where('mode', 'site_visit')
-                    ->orWhere('is_weekend', true);
+                    ->orWhere('is_weekend', true)
+                    ->orWhere('site_visit_status', '!=', 'none');
             })
             ->orderByRaw("CASE WHEN site_visit_status = 'pending' OR compensation_status = 'pending' THEN 0 ELSE 1 END")
             ->orderByDesc('date')
@@ -752,7 +831,7 @@ class AttendanceController extends Controller
             'approved_at' => now(),
         ];
 
-        if ($attendance->mode === 'site_visit') {
+        if ($attendance->mode === 'site_visit' || $attendance->site_visit_status !== 'none') {
             $updates['site_visit_status'] = $newStatus;
             if ($newStatus === 'rejected') {
                 $updates['status'] = 'alpha';

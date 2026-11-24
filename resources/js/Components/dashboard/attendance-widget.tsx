@@ -101,12 +101,23 @@ export function AttendanceWidget() {
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
     const siteReady = mode === 'office' || (!!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url));
 
+    const isOfficeOutOfRadius =
+        isWorking && mode === 'office' && gps.status === 'ready' && !gps.isWithinRadius;
+
     const handleCheckOutClick = () => {
+        if (isOfficeOutOfRadius) {
+            router.visit(route('attendance.index'));
+            return;
+        }
         if (elapsed < TARGET_MS) {
             setEarlyCheckoutModal(true);
             return;
         }
-        checkOut();
+        checkOut({
+            latitude: gps.latitude,
+            longitude: gps.longitude,
+            distance_meters: gps.distanceMeters,
+        });
     };
 
     return (
@@ -394,14 +405,25 @@ export function AttendanceWidget() {
                         </div>
                     ) : isWorking ? (
                         <div className="flex flex-col gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleCheckOutClick}
-                                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-primary/35 bg-card text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/30"
-                            >
-                                <LogOut className="size-4 text-primary" aria-hidden="true" />
-                                Check-out
-                            </button>
+                            {isOfficeOutOfRadius ? (
+                                <button
+                                    type="button"
+                                    onClick={() => router.visit(route('attendance.index'))}
+                                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                                >
+                                    <Camera className="size-4 text-amber-700" aria-hidden="true" />
+                                    Di Luar Kantor · Pulang dari Site Visit →
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleCheckOutClick}
+                                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-primary/35 bg-card text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/30"
+                                >
+                                    <LogOut className="size-4 text-primary" aria-hidden="true" />
+                                    Check-out
+                                </button>
+                            )}
                             <div className="flex items-center justify-between px-0.5 text-[11px] text-muted-foreground">
                                 <button
                                     type="button"
@@ -533,7 +555,11 @@ export function AttendanceWidget() {
                                 type="button"
                                 onClick={() => {
                                     setEarlyCheckoutModal(false);
-                                    checkOut();
+                                    checkOut({
+                                        latitude: gps.latitude,
+                                        longitude: gps.longitude,
+                                        distance_meters: gps.distanceMeters,
+                                    });
                                 }}
                                 className="h-9 rounded-lg bg-amber-600 px-3.5 text-xs font-medium text-white hover:bg-amber-700"
                             >

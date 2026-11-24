@@ -24,20 +24,38 @@ class DashboardController extends Controller
         $user = $request->user();
         $today = Carbon::today();
 
-        $totalEmployees = User::query()->where('role', UserRole::Employee)->count();
+        $totalEmployees = User::query()
+            ->where('is_active', true)
+            ->where('role', '!=', UserRole::SuperAdmin)
+            ->count();
+
         $presentCount = Attendance::query()
             ->whereDate('date', $today)
+            ->where('mode', 'office')
             ->whereIn('status', ['hadir', 'kurang_jam'])
-            ->count();
+            ->whereHas('user', fn ($q) => $q->where('is_active', true)->where('role', '!=', UserRole::SuperAdmin))
+            ->distinct('user_id')
+            ->count('user_id');
+
         $siteVisitCount = Attendance::query()
             ->whereDate('date', $today)
             ->where('mode', 'site_visit')
-            ->count();
+            ->whereHas('user', fn ($q) => $q->where('is_active', true)->where('role', '!=', UserRole::SuperAdmin))
+            ->distinct('user_id')
+            ->count('user_id');
+
+        $activeStatuses = ['planning', 'ongoing', 'review'];
+
         $activeProjectsCount = Project::query()
-            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
+            ->whereIn('status', $activeStatuses)
             ->count();
+
+        $surveyProjectsCount = Project::query()
+            ->where('status', 'survey')
+            ->count();
+
         $urgentProjects = Project::query()
-            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
+            ->whereIn('status', $activeStatuses)
             ->whereNotNull('due_date')
             ->where('due_date', '<=', Carbon::now()->addDays(7))
             ->orderBy('due_date')
@@ -51,7 +69,7 @@ class DashboardController extends Controller
             : ['perencanaan', 'desain_bangun'];
 
         $myActiveProjects = Project::query()
-            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review'])
+            ->whereIn('status', $activeStatuses)
             ->when(! $user->isAdmin(), fn ($q) => $q->whereIn('project_type', $userProjectTypes))
             ->where(function ($q) use ($user): void {
                 $q->where('owner_id', $user->id)
@@ -60,10 +78,19 @@ class DashboardController extends Controller
             ->orderBy('due_date')
             ->get(['id', 'name']);
 
+        $todayAttendance = Attendance::query()
+            ->where('user_id', $user->id)
+            ->whereDate('date', $today)
+            ->first();
+
         $myWeekWorkMinutes = (int) Attendance::query()
             ->where('user_id', $user->id)
             ->whereBetween('date', [$today->copy()->startOfWeek(), $today->copy()->endOfWeek()])
             ->sum('actual_work_minutes');
+
+        if ($todayAttendance && $todayAttendance->check_in_at && ! $todayAttendance->check_out_at && $todayAttendance->actual_work_minutes === null) {
+            $myWeekWorkMinutes += max(0, (int) $todayAttendance->check_in_at->diffInMinutes(now()));
+        }
 
         $myOvertimeMinutes = (int) Overtime::query()
             ->where('user_id', $user->id)
@@ -81,9 +108,10 @@ class DashboardController extends Controller
 
         $metrics = [
             'present_count' => $presentCount,
-            'total_employees' => $totalEmployees > 0 ? $totalEmployees : 1,
+            'total_employees' => $totalEmployees,
             'site_visit_count' => $siteVisitCount,
             'active_projects_count' => $activeProjectsCount,
+            'survey_projects_count' => $surveyProjectsCount,
             'urgent_projects_count' => $urgentProjectsCount,
             'urgent_project_names' => $urgentProjectNames ?: 'Tidak ada deadline mendesak',
             'my_active_projects_count' => $myActiveProjects->count(),
@@ -93,14 +121,9 @@ class DashboardController extends Controller
             'my_month_attendance_days' => $myMonthAttendanceDays,
         ];
 
-        $todayAttendance = Attendance::query()
-            ->where('user_id', $user->id)
-            ->whereDate('date', $today)
-            ->first();
-
         $projectsQuery = Project::query()
             ->with(['members:id,name,photo_url', 'stages'])
-            ->whereIn('status', ['survey', 'planning', 'ongoing', 'review']);
+            ->whereIn('status', $activeStatuses);
 
         if (! $user->isAdmin()) {
             $projectsQuery

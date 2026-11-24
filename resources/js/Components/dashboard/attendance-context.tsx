@@ -23,7 +23,11 @@ type AttendanceState = {
         site_visit_photo?: File | null;
         notes?: string | null;
     }) => void;
-    checkOut: () => void;
+    checkOut: (coords?: {
+        latitude?: number | null;
+        longitude?: number | null;
+        distance_meters?: number | null;
+    }) => void;
     now: Date | null;
 };
 
@@ -134,17 +138,38 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         [mode],
     );
 
-    const checkOut = useCallback(() => {
-        setCheckedOutAt(new Date());
-        setCooldownRemainingSeconds(3600);
-        router.post(
-            route('attendance.check-out'),
-            {
-                simulated_minutes: Math.max(1, Math.floor(elapsedSeconds / 60)),
-            },
-            { preserveScroll: true, preserveState: true },
-        );
-    }, [elapsedSeconds]);
+    const checkOut = useCallback(
+        (coords?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            distance_meters?: number | null;
+        }) => {
+            router.post(
+                route('attendance.check-out'),
+                {
+                    simulated_minutes: Math.max(1, Math.floor(elapsedSeconds / 60)),
+                    ...(coords?.latitude != null && coords?.longitude != null
+                        ? {
+                              latitude: coords.latitude,
+                              longitude: coords.longitude,
+                          }
+                        : {}),
+                    ...(coords?.distance_meters != null
+                        ? { distance_meters: coords.distance_meters }
+                        : {}),
+                },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onSuccess: () => {
+                        setCheckedOutAt(new Date());
+                        setCooldownRemainingSeconds(3600);
+                    },
+                },
+            );
+        },
+        [elapsedSeconds],
+    );
 
     const skipCooldown = useCallback(() => {
         setCooldownRemainingSeconds(0);

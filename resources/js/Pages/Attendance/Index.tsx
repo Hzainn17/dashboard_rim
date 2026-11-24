@@ -20,6 +20,7 @@ import {
     RefreshCw,
     Sparkles,
     Timer,
+    Upload,
     X,
 } from 'lucide-react';
 import { CameraCaptureModal } from '@/Components/CameraCaptureModal';
@@ -115,6 +116,7 @@ interface Props {
     projects: ProjectOption[];
     officeSetting: OfficeSetting;
     isWeekendToday: boolean;
+    canSimulateWeekend?: boolean;
     todayDate: string;
 }
 
@@ -154,6 +156,7 @@ export default function AttendanceIndex({
     projects,
     officeSetting,
     isWeekendToday,
+    canSimulateWeekend = false,
     todayDate,
 }: Props) {
     const { auth, flash, siteVisitProjects = [] } = usePage<PageProps>().props;
@@ -176,16 +179,53 @@ export default function AttendanceIndex({
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [cameraOpen, setCameraOpen] = useState(false);
+    const [cameraTarget, setCameraTarget] = useState<'checkin' | 'checkout'>('checkin');
 
-    // Compensation state when today is an official weekly off-day for this employee
+    // Site Visit Check-out Modal (for office check-in employees who went on mid-day site visit)
+    const [siteVisitCheckoutModal, setSiteVisitCheckoutModal] = useState(false);
+    const [checkoutSiteProjectId, setCheckoutSiteProjectId] = useState<string>(
+        String(siteVisitProjects[0]?.id ?? ''),
+    );
+    const [checkoutPhotoFile, setCheckoutPhotoFile] = useState<File | null>(null);
+    const [checkoutPhotoPreview, setCheckoutPhotoPreview] = useState<string | null>(null);
+    const [checkoutNotes, setCheckoutNotes] = useState<string>('');
+    const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+    const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+    // Compensation state when today is an official weekly off-day (or simulated in local env)
+    const [weekendSim, setWeekendSim] = useState<boolean>(isWeekendToday);
+    const effectiveIsWeekend = canSimulateWeekend ? weekendSim : isWeekendToday;
     const [compensationType, setCompensationType] = useState<'overtime' | 'day_off_exchange'>('overtime');
     const [exchangeDate, setExchangeDate] = useState<string>('');
 
-    const gps = useOfficeGps(
+    const [gpsSimMode, setGpsSimMode] = useState<'real' | 'inside' | 'outside'>('real');
+    const rawGps = useOfficeGps(
         Number(officeSetting.latitude),
         Number(officeSetting.longitude),
         officeSetting.radius_meters,
     );
+    const gps =
+        canSimulateWeekend && gpsSimMode === 'inside'
+            ? {
+                  ...rawGps,
+                  status: 'ready' as const,
+                  latitude: Number(officeSetting.latitude),
+                  longitude: Number(officeSetting.longitude),
+                  distanceMeters: 15,
+                  isWithinRadius: true,
+                  errorMessage: null,
+              }
+            : canSimulateWeekend && gpsSimMode === 'outside'
+            ? {
+                  ...rawGps,
+                  status: 'ready' as const,
+                  latitude: Number(officeSetting.latitude) + 0.015,
+                  longitude: Number(officeSetting.longitude),
+                  distanceMeters: 1668,
+                  isWithinRadius: false,
+                  errorMessage: null,
+              }
+            : rawGps;
 
     // Early checkout warning modal
     const [earlyCheckoutModal, setEarlyCheckoutModal] = useState(false);
@@ -336,14 +376,26 @@ export default function AttendanceIndex({
                 site_visit_project_id: mode === 'site_visit' ? Number(siteProjectId) : null,
                 ...(mode === 'site_visit' && photoFile ? { site_visit_photo: photoFile } : {}),
                 notes: notes || null,
-                compensation_type: isWeekendToday ? compensationType : 'none',
-                exchange_date: isWeekendToday && compensationType === 'day_off_exchange' ? exchangeDate : null,
+                ...(canSimulateWeekend ? { is_weekend: effectiveIsWeekend } : {}),
+                compensation_type: effectiveIsWeekend ? compensationType : 'none',
+                exchange_date:
+                    effectiveIsWeekend && compensationType === 'day_off_exchange' ? exchangeDate : null,
             },
             { forceFormData: true, preserveScroll: true },
         );
     };
 
+    const isOfficeOutOfRadiusForCheckout =
+        isWorking &&
+        todayAttendance?.mode === 'office' &&
+        gps.status === 'ready' &&
+        !gps.isWithinRadius;
+
     const handleCheckOutClick = () => {
+        if (isOfficeOutOfRadiusForCheckout) {
+            setSiteVisitCheckoutModal(true);
+            return;
+        }
         if (elapsedMinutes < targetMinutes && !todayAttendance?.is_weekend) {
             setEarlyCheckoutModal(true);
             return;
@@ -356,9 +408,56 @@ export default function AttendanceIndex({
         router.post(
             route('attendance.check-out'),
             {
-                simulated_minutes: simulatedMinutes ?? elapsedMinutes,
+                simulated_minutes: Math.max(1, simulatedMinutes ?? elapsedMinutes),
+                ...(gps.latitude !== null && gps.longitude !== null
+                    ? {
+                          latitude: gps.latitude,
+                          longitude: gps.longitude,
+                          distance_meters: gps.distanceMeters ?? 0,
+                      }
+                    : {}),
             },
             { preserveScroll: true },
+        );
+    };
+
+    const handleSiteVisitCheckoutSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!checkoutSiteProjectId || !checkoutPhotoFile) {
+            setCheckoutError('Proyek tujuan dan foto bukti lokasi wajib diisi.');
+            return;
+        }
+        setCheckoutError(null);
+        setCheckoutSubmitting(true);
+        router.post(
+            route('attendance.check-out'),
+            {
+                simulated_minutes: Math.max(1, elapsedMinutes),
+                checkout_site_visit: 1,
+                site_visit_project_id: Number(checkoutSiteProjectId),
+                site_visit_photo: checkoutPhotoFile,
+                notes: checkoutNotes || '',
+            },
+            {
+                forceFormData: true,
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSiteVisitCheckoutModal(false);
+                    setCheckoutPhotoFile(null);
+                    setCheckoutPhotoPreview(null);
+                    setCheckoutNotes('');
+                    setCheckoutError(null);
+                },
+                onError: (errors) => {
+                    const firstErr = Object.values(errors)[0];
+                    setCheckoutError(
+                        typeof firstErr === 'string'
+                            ? firstErr
+                            : 'Gagal mengirim check-out site visit. Periksa kembali proyek dan foto bukti.',
+                    );
+                },
+                onFinish: () => setCheckoutSubmitting(false),
+            },
         );
     };
 
@@ -451,25 +550,65 @@ export default function AttendanceIndex({
                                 Lupa Absen / Koreksi Jam
                             </button>
 
+                            {canSimulateWeekend && (
+                                <div className="flex items-center gap-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/70 px-2.5 py-1 text-xs">
+                                    <Navigation className="size-3.5 text-amber-700" />
+                                    <span className="font-medium text-amber-900">Simulasi GPS Lokal:</span>
+                                    <select
+                                        value={gpsSimMode}
+                                        onChange={(e) =>
+                                            setGpsSimMode(e.target.value as 'real' | 'inside' | 'outside')
+                                        }
+                                        className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs font-medium text-amber-950 outline-none"
+                                    >
+                                        <option value="real">GPS Asli</option>
+                                        <option value="inside">Dalam Kantor (15m)</option>
+                                        <option value="outside">Luar Kantor (1.6 km)</option>
+                                    </select>
+                                </div>
+                            )}
+
                             <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
                                 <CalendarClock className="size-4 text-primary" />
                                 <span className="text-muted-foreground">Status Hari:</span>
-                                <span
-                                    className={cn(
-                                        'rounded-md px-2 py-0.5 font-medium',
-                                        isWeekendToday
-                                            ? 'bg-amber-100 text-amber-900'
-                                            : 'bg-secondary text-secondary-foreground',
-                                    )}
-                                >
-                                    {isWeekendToday
-                                        ? isFieldWorker
-                                            ? 'Hari Libur (Minggu)'
-                                            : 'Akhir Pekan (Sabtu/Minggu)'
-                                        : isFieldWorker
-                                        ? 'Hari Kerja (Senin–Sabtu)'
-                                        : 'Hari Kerja (Senin–Jumat)'}
-                                </span>
+                                {canSimulateWeekend ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setWeekendSim(!weekendSim)}
+                                        title="Simulasi Lokal: Klik untuk mengubah mode Hari Kerja / Hari Libur"
+                                        className={cn(
+                                            'cursor-pointer rounded-md px-2 py-0.5 font-medium transition-colors',
+                                            effectiveIsWeekend
+                                                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200/80'
+                                                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+                                        )}
+                                    >
+                                        {effectiveIsWeekend
+                                            ? isFieldWorker
+                                                ? 'Hari Libur (Minggu)'
+                                                : 'Akhir Pekan (Sabtu/Minggu)'
+                                            : isFieldWorker
+                                            ? 'Hari Kerja (Senin–Sabtu)'
+                                            : 'Hari Kerja (Senin–Jumat)'}
+                                    </button>
+                                ) : (
+                                    <span
+                                        className={cn(
+                                            'rounded-md px-2 py-0.5 font-medium',
+                                            effectiveIsWeekend
+                                                ? 'bg-amber-100 text-amber-900'
+                                                : 'bg-secondary text-secondary-foreground',
+                                        )}
+                                    >
+                                        {effectiveIsWeekend
+                                            ? isFieldWorker
+                                                ? 'Hari Libur (Minggu)'
+                                                : 'Akhir Pekan (Sabtu/Minggu)'
+                                            : isFieldWorker
+                                            ? 'Hari Kerja (Senin–Sabtu)'
+                                            : 'Hari Kerja (Senin–Jumat)'}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -617,8 +756,8 @@ export default function AttendanceIndex({
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Weekend Compensation Selector (Automatic based on work_type & calendar day) */}
-                                        {isWeekendToday && !isWorking && (
+                                        {/* Weekend Compensation Selector (Automatic in prod, toggleable in local env) */}
+                                        {effectiveIsWeekend && !isWorking && (
                                             <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 p-4">
                                                 <div className="flex items-start gap-2.5">
                                                     <Sparkles className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -891,7 +1030,10 @@ export default function AttendanceIndex({
                                                                 <button
                                                                     type="button"
                                                                     disabled={isWorking}
-                                                                    onClick={() => setCameraOpen(true)}
+                                                                    onClick={() => {
+                                                                        setCameraTarget('checkin');
+                                                                        setCameraOpen(true);
+                                                                    }}
                                                                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                                                                 >
                                                                     <Camera className="size-3.5" />
@@ -1014,27 +1156,57 @@ export default function AttendanceIndex({
                                                         : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleCheckOutClick}
-                                                        className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                                                    >
-                                                        <LogOut className="size-4" />
-                                                        Check-out Pulang
-                                                    </button>
-                                                    {!hasCompletedOvertimeToday && !isLockedDay && (
+                                                <div className="flex w-full flex-col gap-2">
+                                                    {isOfficeOutOfRadiusForCheckout && (
+                                                        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
+                                                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                                                            <span>
+                                                                Anda terdeteksi di luar radius kantor (
+                                                                <strong>{gps.distanceMeters} m</strong>). Check-out kantor
+                                                                wajib di dalam area studio, atau klik{' '}
+                                                                <strong>Pulang dari Site Visit</strong> untuk melampirkan foto
+                                                                bukti lokasi proyek.
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex flex-wrap items-center gap-2">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setSplitOvertimeModal(true)}
-                                                            title="Lupa absen pulang & langsung lanjut lembur malam tanpa tunggu 1 jam"
-                                                            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-primary/15 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/25"
+                                                            disabled={isOfficeOutOfRadiusForCheckout}
+                                                            onClick={handleCheckOutClick}
+                                                            className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
-                                                            <Timer className="size-3.5" />
-                                                            Check-out & Langsung Lembur
+                                                            <LogOut className="size-4" />
+                                                            Check-out Pulang
                                                         </button>
-                                                    )}
-                                                </>
+                                                        {todayAttendance?.mode === 'office' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSiteVisitCheckoutModal(true)}
+                                                                className={cn(
+                                                                    'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-colors',
+                                                                    isOfficeOutOfRadiusForCheckout
+                                                                        ? 'bg-amber-600 text-white hover:bg-amber-700'
+                                                                        : 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100',
+                                                                )}
+                                                            >
+                                                                <Camera className="size-3.5" />
+                                                                Pulang dari Site Visit
+                                                            </button>
+                                                        )}
+                                                        {!hasCompletedOvertimeToday && !isLockedDay && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSplitOvertimeModal(true)}
+                                                                title="Lupa absen pulang & langsung lanjut lembur malam tanpa tunggu 1 jam"
+                                                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-primary/15 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/25"
+                                                            >
+                                                                <Timer className="size-3.5" />
+                                                                Check-out &amp; Langsung Lembur
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     </>
@@ -1944,14 +2116,183 @@ export default function AttendanceIndex({
                         </form>
                     </div>
                 )}
+                {/* Site Visit Check-out Modal (Pulang dari Site Visit dengan Foto Bukti) */}
+                {siteVisitCheckoutModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div
+                            className="fixed inset-0 bg-black/35 backdrop-blur-xs"
+                            onClick={() => setSiteVisitCheckoutModal(false)}
+                        />
+                        <form
+                            onSubmit={handleSiteVisitCheckoutSubmit}
+                            className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border bg-card p-6 shadow-xl"
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <h3 className="text-base font-semibold">
+                                        Check-out dari Site Visit (Luar Kantor)
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Khusus jika pagi check-in di kantor lalu sore pulang langsung dari lokasi proyek. Foto bukti akan masuk ke Pusat Approval Super Admin.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSiteVisitCheckoutModal(false)}
+                                    className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 flex flex-col gap-3">
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Pilih Proyek Lokasi Site Visit *
+                                    </label>
+                                    <select
+                                        required
+                                        value={checkoutSiteProjectId}
+                                        onChange={(e) => setCheckoutSiteProjectId(e.target.value)}
+                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:border-ring"
+                                    >
+                                        {siteVisitProjects.length === 0 && (
+                                            <option value="">Belum ada proyek aktif</option>
+                                        )}
+                                        {fieldSiteProjects.length > 0 && (
+                                            <optgroup label="Proyek Pembangunan (Lapangan)">
+                                                {fieldSiteProjects.map((p) => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.name} ({p.location || 'Lokasi Proyek'})
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        {planningSiteProjects.length > 0 && (
+                                            <optgroup label="Proyek Perencanaan (Survey Lahan)">
+                                                {planningSiteProjects.map((p) => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.name} ({p.location || 'Lokasi Proyek'})
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-medium">
+                                        Foto Bukti Lokasi Proyek *
+                                    </label>
+                                    {checkoutPhotoPreview ? (
+                                        <div className="relative overflow-hidden rounded-lg border">
+                                            <img
+                                                src={checkoutPhotoPreview}
+                                                alt="Bukti Check-out Site Visit"
+                                                className="h-40 w-full object-cover"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCheckoutPhotoFile(null);
+                                                    setCheckoutPhotoPreview(null);
+                                                }}
+                                                className="absolute top-2 right-2 rounded-md bg-black/70 px-2 py-1 text-[11px] font-medium text-white hover:bg-black"
+                                            >
+                                                Ganti Foto
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/20 p-4 text-center">
+                                            <div className="flex flex-wrap items-center justify-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCameraTarget('checkout');
+                                                        setCameraOpen(true);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                                                >
+                                                    <Camera className="size-3.5" />
+                                                    Ambil Foto Kamera
+                                                </button>
+                                                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                                                    <Upload className="size-3.5" />
+                                                    Pilih dari Galeri
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        className="sr-only"
+                                                        onChange={(e) => {
+                                                            const f = e.target.files?.[0];
+                                                            if (f) {
+                                                                setCheckoutPhotoFile(f);
+                                                                setCheckoutPhotoPreview(URL.createObjectURL(f));
+                                                            }
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground">
+                                                Wajib melampirkan foto bukti berada di lokasi proyek
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        Catatan Kegiatan Lapangan (Opsional)
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={checkoutNotes}
+                                        onChange={(e) => setCheckoutNotes(e.target.value)}
+                                        placeholder="Contoh: Selesai survey lokasi Pak Dede pukul 17:15, langsung pulang dari lokasi."
+                                        className="w-full rounded-lg border bg-background p-2.5 text-sm outline-none focus-visible:border-ring"
+                                    />
+                                </div>
+                            </div>
+
+                            {checkoutError && (
+                                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                    {checkoutError}
+                                </div>
+                            )}
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSiteVisitCheckoutModal(false)}
+                                    className="h-9 rounded-lg border bg-card px-3.5 text-xs font-medium hover:bg-muted"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={checkoutSubmitting || !checkoutSiteProjectId || !checkoutPhotoFile}
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <LogOut className="size-3.5" />
+                                    {checkoutSubmitting ? 'Mengirim…' : 'Kirim Check-out Site Visit'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
             </AppShell>
 
             <CameraCaptureModal
                 open={cameraOpen}
                 onClose={() => setCameraOpen(false)}
                 onCapture={(file, preview) => {
-                    setPhotoFile(file);
-                    setPhotoPreview(preview);
+                    if (cameraTarget === 'checkout') {
+                        setCheckoutPhotoFile(file);
+                        setCheckoutPhotoPreview(preview);
+                    } else {
+                        setPhotoFile(file);
+                        setPhotoPreview(preview);
+                    }
                 }}
             />
         </>

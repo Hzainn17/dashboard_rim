@@ -19,6 +19,7 @@ type LiveDashboardMetrics = {
     total_employees: number;
     site_visit_count: number;
     active_projects_count: number;
+    survey_projects_count?: number;
     urgent_projects_count: number;
     urgent_project_names?: string;
     my_active_projects_count?: number;
@@ -34,12 +35,13 @@ export function QuickMetrics({ role }: { role: Role }) {
     const dailyTargetHours = auth?.targetWorkHours ?? (isFieldWorker ? 8 : 9);
     const weeklyTargetHours = isFieldWorker ? dailyTargetHours * 6 : dailyTargetHours * 5;
 
-    const totalEmp = liveMetrics?.total_employees ?? 1;
+    const totalEmp = liveMetrics?.total_employees ?? 0;
     const presentCount = liveMetrics?.present_count ?? 0;
-    const presentPct = Math.round((presentCount / Math.max(1, totalEmp)) * 100);
+    const presentPct = totalEmp > 0 ? Math.min(100, Math.round((presentCount / totalEmp) * 100)) : 0;
     const siteVisitCount = liveMetrics?.site_visit_count ?? 0;
     const urgentCount = liveMetrics?.urgent_projects_count ?? 0;
     const activeCount = liveMetrics?.active_projects_count ?? 0;
+    const surveyCount = liveMetrics?.survey_projects_count ?? 0;
 
     const weekHours = liveMetrics?.my_week_work_hours ?? 0;
     const weekPct = Math.min(100, Math.round((weekHours / Math.max(1, weeklyTargetHours)) * 100));
@@ -54,7 +56,10 @@ export function QuickMetrics({ role }: { role: Role }) {
             suffix: `/${totalEmp}`,
             badge: `${presentPct}%`,
             badgeTone: 'positive',
-            hint: `${siteVisitCount} tim sedang site visit lapangan`,
+            hint:
+                siteVisitCount > 0
+                    ? `${siteVisitCount} personel sedang site visit lapangan`
+                    : `${totalEmp} personel aktif terdaftar di studio`,
             variant: 'featured',
         },
         {
@@ -63,7 +68,10 @@ export function QuickMetrics({ role }: { role: Role }) {
             suffix: 'tim',
             badge: siteVisitCount > 0 ? 'Aktif' : 'Standby',
             badgeTone: 'positive',
-            hint: 'Kunjungan proyek terjadwal hari ini',
+            hint:
+                siteVisitCount > 0
+                    ? 'Kunjungan proyek aktif hari ini'
+                    : 'Belum ada kunjungan lapangan hari ini',
             variant: 'standard',
         },
         {
@@ -79,9 +87,12 @@ export function QuickMetrics({ role }: { role: Role }) {
             label: 'Proyek Berjalan',
             value: String(activeCount),
             suffix: 'aktif',
-            badge: 'Live DB',
+            badge: surveyCount > 0 ? `+${surveyCount} survey` : activeCount > 0 ? 'Aktif' : 'Kosong',
             badgeTone: 'positive',
-            hint: 'Proyek aktif dalam fase desain & review',
+            hint:
+                surveyCount > 0
+                    ? `${surveyCount} proyek masih dalam tahap survey`
+                    : 'Proyek aktif dalam fase desain & konstruksi',
             variant: 'sparkline',
         },
     ];
