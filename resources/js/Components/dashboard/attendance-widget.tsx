@@ -432,13 +432,16 @@ export function AttendanceWidget() {
                                 >
                                     Koreksi jam masuk?
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => router.visit(route('attendance.index'))}
-                                    className="font-medium text-primary hover:underline"
-                                >
-                                    Check-out & Langsung Lembur →
-                                </button>
+                                {elapsedMinutes >= targetWorkMinutes &&
+                                    (mode !== 'office' || (gps.status === 'ready' && gps.isWithinRadius)) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => router.visit(route('attendance.index'))}
+                                            className="font-medium text-primary hover:underline"
+                                        >
+                                            Check-out &amp; Langsung Lembur →
+                                        </button>
+                                    )}
                             </div>
                         </div>
                     ) : checkedOutAt ? (

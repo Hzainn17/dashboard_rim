@@ -391,6 +391,13 @@ export default function AttendanceIndex({
         gps.status === 'ready' &&
         !gps.isWithinRadius;
 
+    const canShowSplitOvertime =
+        isWorking &&
+        !hasCompletedOvertimeToday &&
+        !isLockedDay &&
+        elapsedMinutes >= targetMinutes &&
+        (todayAttendance?.mode !== 'office' || (gps.status === 'ready' && gps.isWithinRadius));
+
     const handleCheckOutClick = () => {
         if (isOfficeOutOfRadiusForCheckout) {
             setSiteVisitCheckoutModal(true);
@@ -514,13 +521,26 @@ export default function AttendanceIndex({
 
     const handleSplitOvertimeSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        splitOvertimeForm.post(route('attendance.checkout-and-overtime'), {
-            preserveScroll: true,
-            onSuccess: () => {
-                setSplitOvertimeModal(false);
-                splitOvertimeForm.reset('task_description');
+        router.post(
+            route('attendance.checkout-and-overtime'),
+            {
+                ...splitOvertimeForm.data,
+                ...(gps.latitude !== null && gps.longitude !== null
+                    ? {
+                          latitude: gps.latitude,
+                          longitude: gps.longitude,
+                          distance_meters: gps.distanceMeters ?? 0,
+                      }
+                    : {}),
             },
-        });
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSplitOvertimeModal(false);
+                    splitOvertimeForm.reset('task_description');
+                },
+            },
+        );
     };
 
     return (
@@ -1179,22 +1199,17 @@ export default function AttendanceIndex({
                                                             <LogOut className="size-4" />
                                                             Check-out Pulang
                                                         </button>
-                                                        {todayAttendance?.mode === 'office' && (
+                                                        {isOfficeOutOfRadiusForCheckout && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setSiteVisitCheckoutModal(true)}
-                                                                className={cn(
-                                                                    'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-colors',
-                                                                    isOfficeOutOfRadiusForCheckout
-                                                                        ? 'bg-amber-600 text-white hover:bg-amber-700'
-                                                                        : 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100',
-                                                                )}
+                                                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
                                                             >
                                                                 <Camera className="size-3.5" />
                                                                 Pulang dari Site Visit
                                                             </button>
                                                         )}
-                                                        {!hasCompletedOvertimeToday && !isLockedDay && (
+                                                        {canShowSplitOvertime && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setSplitOvertimeModal(true)}

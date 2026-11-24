@@ -659,6 +659,9 @@ class AttendanceController extends Controller
         $validated = $request->validate([
             'project_id' => ['required', 'exists:projects,id'],
             'task_description' => ['required', 'string', 'max:500'],
+            'latitude' => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
+            'distance_meters' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $attendance = Attendance::query()
@@ -667,12 +670,44 @@ class AttendanceController extends Controller
             ->whereNotNull('check_in_at')
             ->firstOrFail();
 
+        if ($attendance->mode === 'office') {
+            $officeSetting = OfficeSetting::current();
+            $hasCoords = isset($validated['latitude'], $validated['longitude']);
+
+            if ($hasCoords || isset($validated['distance_meters'])) {
+                $distance = $hasCoords
+                    ? $this->calculateHaversineMeters(
+                        (float) $validated['latitude'],
+                        (float) $validated['longitude'],
+                        (float) $officeSetting->latitude,
+                        (float) $officeSetting->longitude,
+                    )
+                    : (int) $validated['distance_meters'];
+
+                if ($distance > $officeSetting->radius_meters) {
+                    return redirect()->back()->with(
+                        'error',
+                        "Jarak Anda ({$distance}m) di luar radius kantor ({$officeSetting->radius_meters}m). Check-out & Langsung Lembur hanya tersedia jika GPS terdeteksi masih di dalam kantor.",
+                    );
+                }
+            }
+        }
+
         if ($blockReason = $this->validateCanStartOvertime($user, $today, $attendance)) {
             return redirect()->back()->with('error', $blockReason);
         }
 
         $targetMinutes = $attendance->target_work_minutes ?: $user->dailyTargetWorkMinutes();
         $elapsedFromCheckIn = (int) $attendance->check_in_at->diffInMinutes(now());
+
+        if ($elapsedFromCheckIn < $targetMinutes) {
+            $targetHours = round($targetMinutes / 60, 1);
+
+            return redirect()->back()->with(
+                'error',
+                "Fitur Check-out & Langsung Lembur hanya tersedia jika Anda sudah melewati jam pulang reguler ({$targetHours} jam) dan lupa check-out.",
+            );
+        }
 
         // Cap regular work at target 9 hours if user has exceeded it
         $regCheckOutAt = $elapsedFromCheckIn >= $targetMinutes

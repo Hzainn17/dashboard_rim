@@ -824,4 +824,66 @@ class AttendanceModuleTest extends TestCase
                 ->has('siteVisits', 1)
             );
     }
+
+    public function test_split_checkout_and_overtime_requires_exceeded_work_hours_and_office_gps_radius(): void
+    {
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $admin = User::factory()->superAdmin()->create();
+        $employee = User::factory()->create();
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+
+        // Checked in at 08:00; currently 10:30 (only 2.5 hours, not yet forgotten checkout)
+        $this->travelTo(Carbon::today()->setTime(10, 30));
+        Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'mode' => 'office',
+            'check_in_at' => Carbon::today()->setTime(8, 0),
+            'target_work_minutes' => 540,
+            'status' => 'hadir',
+        ]);
+
+        // 1. Blocked before regular work hours are met
+        $this->actingAs($employee)
+            ->post('/attendance/checkout-and-overtime', [
+                'project_id' => $project->id,
+                'task_description' => 'Terlalu cepat lembur',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('error');
+
+        // 2. Travel to 19:00 (forgot checkout) but outside office radius -> blocked
+        $this->travelTo(Carbon::today()->setTime(19, 0));
+        $this->actingAs($employee)
+            ->post('/attendance/checkout-and-overtime', [
+                'project_id' => $project->id,
+                'task_description' => 'Lembur dari luar kantor',
+                'latitude' => -6.1900000,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('error');
+
+        // 3. At 19:00 AND inside office radius -> allowed
+        $this->actingAs($employee)
+            ->post('/attendance/checkout-and-overtime', [
+                'project_id' => $project->id,
+                'task_description' => 'Lembur di studio setelah lupa checkout',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('overtimes', [
+            'user_id' => $employee->id,
+            'project_id' => $project->id,
+            'status' => 'active',
+        ]);
+    }
 }
