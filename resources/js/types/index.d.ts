@@ -196,6 +196,13 @@ export type PageProps<
         unread: boolean;
         url: string | null;
     }>;
+    todayUnfinishedDailyTasks?: Array<{
+        id: number;
+        title: string;
+        status: string;
+        notes?: string | null;
+        project_name?: string | null;
+    }>;
     flash?: {
         success?: string | null;
         error?: string | null;

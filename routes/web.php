@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\DailyTaskController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\MyProfileController;
@@ -73,6 +74,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::post('/calendar/events', [CalendarController::class, 'store'])->name('calendar.events.store');
     Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->name('calendar.events.destroy');
+
+    // Daily To-Do & Team Work Tracker (Kerja Tim / Kerja Hari Ini)
+    Route::get('/daily-tasks', [DailyTaskController::class, 'index'])->name('daily-tasks.index');
+    Route::post('/daily-tasks', [DailyTaskController::class, 'store'])->name('daily-tasks.store');
+    Route::post('/daily-tasks/carry-over', [DailyTaskController::class, 'carryOverBatch'])->name('daily-tasks.carry-over');
+    Route::patch('/daily-tasks/{dailyTask}', [DailyTaskController::class, 'updateStatus'])->name('daily-tasks.update');
+    Route::delete('/daily-tasks/{dailyTask}', [DailyTaskController::class, 'destroy'])->name('daily-tasks.destroy');
 
     // Personal Profile, KPI & Private Payslips
     Route::get('/my-profile', [MyProfileController::class, 'index'])->name('my-profile.index');

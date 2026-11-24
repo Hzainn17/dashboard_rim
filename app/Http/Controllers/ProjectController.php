@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\DailyTask;
 use App\Models\OfficeSetting;
 use App\Models\Project;
 use App\Models\ProjectClientBrief;
@@ -420,6 +421,7 @@ class ProjectController extends Controller
             'stages' => fn ($q) => $q->orderBy('order'),
             'tasks.assignee.employee',
             'tasks.stage',
+            'tasks.dailyTasks' => fn ($q) => $q->with('user:id,name')->latest('work_date')->latest('id'),
             'updates.user.employee',
         ]);
 
@@ -1005,6 +1007,18 @@ class ProjectController extends Controller
                 'photo_url' => $t->assignee->photo_url,
                 'position' => $t->assignee->employee?->position ?? 'Arsitek',
             ] : null,
+            'daily_tasks_count' => $t->relationLoaded('dailyTasks') ? $t->dailyTasks->count() : 0,
+            'daily_tasks' => $t->relationLoaded('dailyTasks')
+                ? $t->dailyTasks->take(10)->map(fn (DailyTask $dt): array => [
+                    'id' => $dt->id,
+                    'title' => $dt->title,
+                    'status' => $dt->status,
+                    'notes' => $dt->notes,
+                    'work_date' => $dt->work_date->format('Y-m-d'),
+                    'work_date_formatted' => $dt->work_date->translatedFormat('d M'),
+                    'user_name' => $dt->user?->name ?? 'Tim Studio',
+                ])->values()->all()
+                : [],
         ];
     }
 }

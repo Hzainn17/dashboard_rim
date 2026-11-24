@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\UserRole;
 use App\Models\ActivityLog;
 use App\Models\Attendance;
+use App\Models\DailyTask;
 use App\Models\OfficeSetting;
 use App\Models\Overtime;
 use App\Models\Project;
@@ -212,6 +213,18 @@ class DashboardController extends Controller
             ->orderBy('name')
             ->get();
 
+        $todayDailyTasks = DailyTask::query()
+            ->with(['project:id,name,client_name', 'projectTask:id,project_id,title,status', 'assignedBy:id,name'])
+            ->where('user_id', $user->id)
+            ->forDate($today)
+            ->orderByRaw("CASE status WHEN 'in_progress' THEN 0 WHEN 'review' THEN 1 WHEN 'carried_over' THEN 2 WHEN 'done' THEN 3 ELSE 4 END")
+            ->orderBy('id')
+            ->get()
+            ->map(fn (DailyTask $task): array => DailyTaskController::formatDailyTask($task))
+            ->values();
+
+        $dailyTaskProjects = DailyTaskController::getAccessibleProjectsWithKanbanTasks($user);
+
         return Inertia::render('Dashboard', [
             'metrics' => $metrics,
             'todayAttendance' => $todayAttendance,
@@ -220,6 +233,8 @@ class DashboardController extends Controller
             'activities' => $activities,
             'officeSetting' => $officeSetting,
             'projectOptions' => $projectOptions,
+            'todayDailyTasks' => $todayDailyTasks,
+            'dailyTaskProjects' => $dailyTaskProjects,
         ]);
     }
 }

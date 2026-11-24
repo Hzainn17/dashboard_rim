@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\ActivityLog;
 use App\Models\Attendance;
+use App\Models\DailyTask;
 use App\Models\LeaveRequest;
 use App\Models\OfficeSetting;
 use App\Models\Overtime;
@@ -167,6 +168,24 @@ class HandleInertiaRequests extends Middleware
             'siteVisitProjects' => fn (): array => $user && Schema::hasColumn('projects', 'project_type')
                 ? Project::siteVisitOptionsFor($user)
                 : [],
+            'todayUnfinishedDailyTasks' => fn (): array => $user && Schema::hasTable('daily_tasks')
+                ? DailyTask::query()
+                    ->with(['project:id,name'])
+                    ->where('user_id', $user->id)
+                    ->forDate(Carbon::today())
+                    ->whereIn('status', ['in_progress', 'review'])
+                    ->orderBy('id')
+                    ->get()
+                    ->map(fn (DailyTask $t): array => [
+                        'id' => $t->id,
+                        'title' => $t->title,
+                        'status' => $t->status,
+                        'notes' => $t->notes,
+                        'project_name' => $t->project?->name,
+                    ])
+                    ->values()
+                    ->all()
+                : [],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
@@ -206,6 +225,7 @@ class HandleInertiaRequests extends Middleware
                     str_starts_with($action, 'payroll.') => $user->isSuperAdmin() ? route('payroll.index') : route('my-profile.index'),
                     str_starts_with($action, 'employee.') => $user->isSuperAdmin() ? route('employees.index') : route('dashboard'),
                     str_starts_with($action, 'project.') => route('projects.index'),
+                    str_starts_with($action, 'daily_task.') => route('daily-tasks.index'),
                     str_starts_with($action, 'calendar.') => route('calendar.index'),
                     str_starts_with($action, 'attendance.'), str_starts_with($action, 'leave.'), str_starts_with($action, 'overtime.') => $user->isSuperAdmin() ? route('attendance.approvals') : route('attendance.index'),
                     default => route('dashboard'),

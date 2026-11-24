@@ -69,6 +69,10 @@ export function AppShell({
             router.visit(route('projects.field'));
             return;
         }
+        if (id === 'daily-tasks') {
+            router.visit(route('daily-tasks.index'));
+            return;
+        }
         if (id === 'kalender') {
             router.visit(route('calendar.index'));
             return;

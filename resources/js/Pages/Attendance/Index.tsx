@@ -159,7 +159,12 @@ export default function AttendanceIndex({
     canSimulateWeekend = false,
     todayDate,
 }: Props) {
-    const { auth, flash, siteVisitProjects = [] } = usePage<PageProps>().props;
+    const {
+        auth,
+        flash,
+        siteVisitProjects = [],
+        todayUnfinishedDailyTasks = [],
+    } = usePage<PageProps>().props;
     const isFieldWorker = auth?.workType === 'lapangan';
     const fieldSiteProjects = siteVisitProjects.filter((p) => p.group === 'lapangan');
     const planningSiteProjects = siteVisitProjects.filter((p) => p.group === 'perencanaan');
@@ -229,6 +234,13 @@ export default function AttendanceIndex({
 
     // Early checkout warning modal
     const [earlyCheckoutModal, setEarlyCheckoutModal] = useState(false);
+
+    // Pre-checkout Daily To-Do Summary & Carry-Over modal
+    const [todoSummaryModal, setTodoSummaryModal] = useState(false);
+    const [todoDecisions, setTodoDecisions] = useState<
+        Record<number, { action: 'done' | 'carry_over'; notes: string }>
+    >({});
+    const [savingTodoSummary, setSavingTodoSummary] = useState(false);
 
     // Case 1 & 2: Attendance Adjustment Modal (Lupa Absen Masuk / Pulang / Seharian)
     const [adjustmentModal, setAdjustmentModal] = useState(false);
@@ -398,16 +410,55 @@ export default function AttendanceIndex({
         elapsedMinutes >= targetMinutes &&
         (todayAttendance?.mode !== 'office' || (gps.status === 'ready' && gps.isWithinRadius));
 
-    const handleCheckOutClick = () => {
-        if (isOfficeOutOfRadiusForCheckout) {
-            setSiteVisitCheckoutModal(true);
-            return;
-        }
+    const proceedAfterTodoCheck = () => {
         if (elapsedMinutes < targetMinutes && !todayAttendance?.is_weekend) {
             setEarlyCheckoutModal(true);
             return;
         }
         confirmCheckOut(elapsedMinutes);
+    };
+
+    const handleCheckOutClick = () => {
+        if (isOfficeOutOfRadiusForCheckout) {
+            setSiteVisitCheckoutModal(true);
+            return;
+        }
+        if (todayUnfinishedDailyTasks.length > 0) {
+            const initial: Record<number, { action: 'done' | 'carry_over'; notes: string }> = {};
+            todayUnfinishedDailyTasks.forEach((t) => {
+                initial[t.id] = { action: 'carry_over', notes: t.notes ?? '' };
+            });
+            setTodoDecisions(initial);
+            setTodoSummaryModal(true);
+            return;
+        }
+        proceedAfterTodoCheck();
+    };
+
+    const handleTodoSummarySaveAndCheckout = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSavingTodoSummary(true);
+        const items = todayUnfinishedDailyTasks.map((t) => ({
+            id: t.id,
+            action: todoDecisions[t.id]?.action ?? 'carry_over',
+            notes: todoDecisions[t.id]?.notes ?? '',
+        }));
+
+        router.post(
+            route('daily-tasks.carry-over'),
+            {
+                mode: 'checkout_summary',
+                items,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setTodoSummaryModal(false);
+                    proceedAfterTodoCheck();
+                },
+                onFinish: () => setSavingTodoSummary(false),
+            },
+        );
     };
 
     const confirmCheckOut = (simulatedMinutes?: number) => {
@@ -2131,6 +2182,144 @@ export default function AttendanceIndex({
                         </form>
                     </div>
                 )}
+                {/* Pre-Checkout Daily To-Do Summary & Carry-Over Modal */}
+                {todoSummaryModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div
+                            className="fixed inset-0 bg-black/35 backdrop-blur-xs"
+                            onClick={() => setTodoSummaryModal(false)}
+                        />
+                        <form
+                            onSubmit={handleTodoSummarySaveAndCheckout}
+                            className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-card p-6 shadow-xl"
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <h3 className="text-base font-semibold">
+                                        Ringkasan To-Do Sebelum Pulang
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Masih ada <strong>{todayUnfinishedDailyTasks.length} to-do hari ini</strong> yang belum ditandai selesai. Centang yang sudah tuntas atau pilih <strong>Lanjut Besok</strong> agar otomatis muncul di daftar kerja besok pagi.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setTodoSummaryModal(false)}
+                                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                                >
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 flex flex-col gap-3">
+                                {todayUnfinishedDailyTasks.map((task) => {
+                                    const decision = todoDecisions[task.id] ?? {
+                                        action: 'carry_over' as const,
+                                        notes: task.notes ?? '',
+                                    };
+                                    return (
+                                        <div
+                                            key={task.id}
+                                            className="rounded-lg border bg-background/70 p-3 text-xs"
+                                        >
+                                            <div className="flex flex-wrap items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-semibold text-foreground">
+                                                        {task.title}
+                                                    </p>
+                                                    {task.project_name && (
+                                                        <p className="mt-0.5 text-[11px] text-primary">
+                                                            {task.project_name}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="inline-flex rounded-md border bg-muted/40 p-0.5 text-[11px]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setTodoDecisions((prev) => ({
+                                                                ...prev,
+                                                                [task.id]: { ...decision, action: 'done' },
+                                                            }))
+                                                        }
+                                                        className={cn(
+                                                            'rounded px-2 py-1 font-medium transition-colors',
+                                                            decision.action === 'done'
+                                                                ? 'bg-emerald-600 text-white'
+                                                                : 'text-muted-foreground hover:text-foreground',
+                                                        )}
+                                                    >
+                                                        Selesai
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setTodoDecisions((prev) => ({
+                                                                ...prev,
+                                                                [task.id]: { ...decision, action: 'carry_over' },
+                                                            }))
+                                                        }
+                                                        className={cn(
+                                                            'rounded px-2 py-1 font-medium transition-colors',
+                                                            decision.action === 'carry_over'
+                                                                ? 'bg-amber-600 text-white'
+                                                                : 'text-muted-foreground hover:text-foreground',
+                                                        )}
+                                                    >
+                                                        Lanjut Besok
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={decision.notes}
+                                                onChange={(e) =>
+                                                    setTodoDecisions((prev) => ({
+                                                        ...prev,
+                                                        [task.id]: { ...decision, notes: e.target.value },
+                                                    }))
+                                                }
+                                                placeholder="Catatan progres / kendala singkat (opsional)..."
+                                                className="mt-2 h-8 w-full rounded-md border bg-card px-2.5 text-xs outline-none focus-visible:border-ring"
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTodoSummaryModal(false);
+                                        proceedAfterTodoCheck();
+                                    }}
+                                    className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+                                >
+                                    Lewati &amp; Langsung Check-out
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTodoSummaryModal(false)}
+                                        className="h-9 rounded-lg border bg-card px-3.5 text-xs font-medium hover:bg-muted"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={savingTodoSummary}
+                                        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                    >
+                                        <LogOut className="size-3.5" />
+                                        {savingTodoSummary ? 'Menyimpan…' : 'Simpan & Check-out Pulang'}
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
                 {/* Site Visit Check-out Modal (Pulang dari Site Visit dengan Foto Bukti) */}
                 {siteVisitCheckoutModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

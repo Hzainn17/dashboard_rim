@@ -124,6 +124,16 @@ interface KanbanTaskItem {
     stage_id?: number | null;
     stage_name?: string | null;
     assignee?: TaskAssignee | null;
+    daily_tasks_count?: number;
+    daily_tasks?: Array<{
+        id: number;
+        title: string;
+        status: string;
+        notes?: string | null;
+        work_date: string;
+        work_date_formatted: string;
+        user_name: string;
+    }>;
 }
 
 interface KanbanColumns {
@@ -1096,6 +1106,31 @@ export default function ProjectShow({
                                                         <p className="line-clamp-2 text-[11px] text-muted-foreground leading-relaxed">
                                                             {task.description}
                                                         </p>
+                                                    )}
+
+                                                    {(task.daily_tasks_count ?? 0) > 0 && (
+                                                        <div className="rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-1.5 text-[10px]">
+                                                            <p className="font-semibold text-primary">
+                                                                {task.daily_tasks_count} sub-task harian tim
+                                                            </p>
+                                                            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                                                                {(task.daily_tasks ?? []).slice(0, 3).map((dt) => (
+                                                                    <li key={dt.id} className="flex items-center justify-between gap-1.5">
+                                                                        <span
+                                                                            className={cn(
+                                                                                'truncate',
+                                                                                dt.status === 'done' && 'line-through opacity-75',
+                                                                            )}
+                                                                        >
+                                                                            • {dt.title} ({dt.user_name.split(' ')[0]})
+                                                                        </span>
+                                                                        <span className="shrink-0 font-mono text-[9px]">
+                                                                            {dt.work_date_formatted}
+                                                                        </span>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
                                                     )}
 
                                                     {/* Footer: Due Date & Assignee */}

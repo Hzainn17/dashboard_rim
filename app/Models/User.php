@@ -56,6 +56,24 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine whether the user acts as a PM / Division Lead (Super Admin, Admin, or Lead Arsitek / PM position).
+     */
+    public function isDivisionLead(): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        $position = strtolower((string) ($this->employee?->position ?? ''));
+
+        return str_contains($position, 'lead')
+            || str_contains($position, 'project manager')
+            || str_contains($position, 'manager')
+            || str_contains($position, 'kepala')
+            || preg_match('/\bpm\b/i', $position) === 1;
+    }
+
+    /**
      * Determine whether the user is a field employee (karyawan lapangan).
      */
     public function isFieldWorker(): bool
@@ -190,5 +208,13 @@ class User extends Authenticatable
     public function activityLogs(): HasMany
     {
         return $this->hasMany(ActivityLog::class);
+    }
+
+    /**
+     * @return HasMany<DailyTask, $this>
+     */
+    public function dailyTasks(): HasMany
+    {
+        return $this->hasMany(DailyTask::class);
     }
 }

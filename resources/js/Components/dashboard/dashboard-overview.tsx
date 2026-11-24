@@ -5,6 +5,7 @@ import { PageProps } from '@/types';
 import { ActivityFeed, StudioAgenda } from './agenda-activity';
 import { useAttendance } from './attendance-context';
 import { AttendanceWidget } from './attendance-widget';
+import { DailyFocusWidget } from './daily-focus-widget';
 import { ProjectGallery } from './project-gallery';
 import { QuickMetrics } from './quick-metrics';
 import { StudioCalendar } from './studio-calendar';
@@ -60,6 +61,8 @@ export function DashboardOverview({ role }: { role: Role }) {
             )}
 
             <QuickMetrics role={role} />
+
+            <DailyFocusWidget role={role} />
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 <AttendanceWidget />

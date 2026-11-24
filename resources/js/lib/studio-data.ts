@@ -5,6 +5,7 @@ import {
     FolderKanban,
     HardHat,
     LayoutDashboard,
+    ListTodo,
     MapPinCheck,
     Settings,
     User,
@@ -34,6 +35,7 @@ export const adminNav: NavItem[] = [
     { id: 'karyawan', label: 'Data Karyawan', icon: Users },
     { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
     { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
+    { id: 'daily-tasks', label: 'Kerja Tim', icon: ListTodo },
     {
         id: 'presensi',
         label: 'Presensi Tim',
@@ -52,6 +54,7 @@ export const adminNav: NavItem[] = [
 export const regularAdminNav: NavItem[] = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'presensi-harian', label: 'Presensi Harian', icon: MapPinCheck },
+    { id: 'daily-tasks', label: 'Kerja Tim', icon: ListTodo },
     { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
     { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
     { id: 'kalender', label: 'Kalender Tim', icon: CalendarDays },
@@ -61,6 +64,7 @@ export const regularAdminNav: NavItem[] = [
 export const karyawanNav: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'presensi-harian', label: 'Presensi Harian', icon: MapPinCheck },
+    { id: 'daily-tasks', label: 'Kerja Tim', icon: ListTodo },
     { id: 'projects', label: 'Proyek Perencanaan', icon: FolderKanban },
     { id: 'field-projects', label: 'Proyek Lapangan', icon: HardHat },
     { id: 'kalender', label: 'Kalender Tim', icon: CalendarDays },
