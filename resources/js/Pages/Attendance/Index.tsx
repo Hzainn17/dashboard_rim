@@ -1233,7 +1233,23 @@ export default function AttendanceIndex({
 
                                         {/* Action Buttons */}
                                         <div className="flex flex-wrap items-center gap-2">
-                                            {!isWorking ? (
+                                            {hasCheckedOut ? (
+                                                <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
+                                                    <div className="flex items-center gap-2 font-medium">
+                                                        <CheckCircle2 className="size-4 shrink-0" />
+                                                        <span>
+                                                            Presensi Hari Ini Selesai · Pulang pukul{' '}
+                                                            {todayAttendance?.check_out_at
+                                                                ? new Date(todayAttendance.check_out_at).toTimeString().slice(0, 5)
+                                                                : '--:--'}{' '}
+                                                            WIB
+                                                        </span>
+                                                    </div>
+                                                    <span className="hidden text-xs text-success/80 sm:inline">
+                                                        Butuh koreksi? Gunakan menu Koreksi Jam
+                                                    </span>
+                                                </div>
+                                            ) : !isWorking ? (
                                                 <button
                                                     type="button"
                                                     disabled={!canCheckInSiteVisit}
@@ -1248,15 +1264,11 @@ export default function AttendanceIndex({
                                                             ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
                                                             : !gps.isWithinRadius
                                                             ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
-                                                            : hasCheckedOut
-                                                            ? 'Check-in Ulang Hari Ini'
                                                             : 'Check-in Kantor Sekarang'
                                                         : !siteProjectId
                                                         ? 'Pilih Proyek Terlebih Dahulu'
                                                         : !photoFile
                                                         ? 'Wajib Ambil / Lampirkan Foto Lokasi'
-                                                        : hasCheckedOut
-                                                        ? 'Check-in Ulang Site Visit'
                                                         : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : (

@@ -174,6 +174,13 @@ class AttendanceController extends Controller
             return redirect()->back()->with('error', 'Anda sudah melakukan check-in hari ini.');
         }
 
+        if ($existing && $existing->check_in_at && $existing->check_out_at) {
+            return redirect()->back()->with(
+                'error',
+                'Presensi hari ini sudah selesai (Check-in & Check-out tercatat). Gunakan menu "Lupa Absen / Koreksi Jam" jika perlu penyesuaian.',
+            );
+        }
+
         $validated = $request->validate([
             'mode' => ['required', Rule::in(['office', 'site_visit'])],
             'distance_meters' => ['nullable', 'integer', 'min:0'],

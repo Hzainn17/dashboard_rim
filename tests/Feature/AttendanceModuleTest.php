@@ -1010,4 +1010,41 @@ class AttendanceModuleTest extends TestCase
         $attendance = Attendance::query()->where('user_id', $employee->id)->firstOrFail();
         $this->assertNull($attendance->check_out_at);
     }
+
+    public function test_employee_cannot_re_checkin_after_already_checking_out_today(): void
+    {
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $employee = User::factory()->create();
+        $checkInTime = Carbon::today()->setTime(8, 11);
+        $checkOutTime = Carbon::today()->setTime(17, 11);
+
+        $attendance = Attendance::query()->create([
+            'user_id' => $employee->id,
+            'date' => Carbon::today(),
+            'mode' => 'office',
+            'check_in_at' => $checkInTime,
+            'check_out_at' => $checkOutTime,
+            'work_minutes' => 540,
+            'shortage_minutes' => 0,
+            'status' => 'hadir',
+        ]);
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('error');
+
+        $attendance->refresh();
+        $this->assertSame('08:11', $attendance->check_in_at->format('H:i'));
+        $this->assertSame('17:11', $attendance->check_out_at->format('H:i'));
+    }
 }

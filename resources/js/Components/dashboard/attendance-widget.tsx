@@ -483,19 +483,7 @@ export function AttendanceWidget() {
                                         ) : (
                                             <span className="font-medium text-success">Siap mulai lembur</span>
                                         )}
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                checkIn({
-                                                    latitude: gps.latitude,
-                                                    longitude: gps.longitude,
-                                                    distance_meters: gps.distanceMeters,
-                                                })
-                                            }
-                                            className="hover:text-foreground hover:underline"
-                                        >
-                                            Check-in Ulang
-                                        </button>
+                                        <span className="text-muted-foreground/80">Presensi hari ini selesai</span>
                                     </div>
                                 </>
                             )}
