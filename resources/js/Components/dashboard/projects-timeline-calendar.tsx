@@ -96,14 +96,12 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
     const [projectFilter, setProjectFilter] = useState<string>('all');
     const [stageFilter, setStageFilter] = useState<string>('all');
     const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
-    const [showAllRows, setShowAllRows] = useState<boolean>(false);
     const [selectedCell, setSelectedCell] = useState<{
         project: TimelineProject;
         iso: string;
         note: string;
     } | null>(null);
 
-    const INITIAL_VISIBLE_ROWS = 5;
     const DAYS_COUNT = 26;
 
     const dateColumns = useMemo(() => {
@@ -171,13 +169,6 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
             return true;
         });
     }, [projects, picFilter, projectFilter, stageFilter]);
-
-    const visibleProjects = useMemo(() => {
-        if (showAllRows || projectFilter !== 'all') {
-            return filteredProjects;
-        }
-        return filteredProjects.slice(0, INITIAL_VISIBLE_ROWS);
-    }, [filteredProjects, showAllRows, projectFilter]);
 
     // Build date map per project
     const projectCellMaps = useMemo(() => {
@@ -381,13 +372,8 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
 
             {!isCollapsed && (
                 <>
-                    {/* Matrix Table (bounded vertical height with sticky headers when expanded) */}
-                    <div
-                        className={cn(
-                            'overflow-x-auto rounded-lg border border-border',
-                            showAllRows && filteredProjects.length > INITIAL_VISIBLE_ROWS && 'max-h-[380px] overflow-y-auto',
-                        )}
-                    >
+                    {/* Matrix Table (bounded vertical & horizontal scroll with sticky headers) */}
+                    <div className="max-h-[260px] overflow-auto rounded-lg border border-border">
                         <table className="w-full border-collapse text-[11px]">
                             <thead className="sticky top-0 z-30 bg-card shadow-2xs">
                                 {/* Row 1: Sticky Left Headers + Month/Year Groups */}
@@ -457,7 +443,7 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
                             </thead>
 
                             <tbody className="divide-y">
-                                {visibleProjects.length === 0 ? (
+                                {filteredProjects.length === 0 ? (
                                     <tr>
                                         <td
                                             colSpan={4 + dateColumns.length}
@@ -467,7 +453,7 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
                                         </td>
                                     </tr>
                                 ) : (
-                                    visibleProjects.map((project, idx) => {
+                                    filteredProjects.map((project, idx) => {
                                 const cellMap = projectCellMaps[project.id] || {};
                                 return (
                                     <tr key={project.id} className="group hover:bg-muted/20">
@@ -559,32 +545,6 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
                         </tbody>
                     </table>
                 </div>
-
-                {projectFilter === 'all' && filteredProjects.length > INITIAL_VISIBLE_ROWS && (
-                    <div className="flex items-center justify-between rounded-lg border border-dashed bg-muted/25 px-3 py-1.5 text-xs">
-                        <span className="text-muted-foreground">
-                            {showAllRows
-                                ? `Menampilkan seluruh ${filteredProjects.length} proyek (scroll tabel ke bawah)`
-                                : `Menampilkan ${INITIAL_VISIBLE_ROWS} dari ${filteredProjects.length} proyek aktif`}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setShowAllRows((prev) => !prev)}
-                            className="inline-flex items-center gap-1 font-semibold text-[#46797b] hover:underline"
-                        >
-                            {showAllRows ? (
-                                <>
-                                    Ringkas jadi {INITIAL_VISIBLE_ROWS} proyek <ChevronUp className="size-3.5" />
-                                </>
-                            ) : (
-                                <>
-                                    Lihat {filteredProjects.length - INITIAL_VISIBLE_ROWS} proyek lainnya{' '}
-                                    <ChevronDown className="size-3.5" />
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
 
                 {selectedCell && (
                     <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
