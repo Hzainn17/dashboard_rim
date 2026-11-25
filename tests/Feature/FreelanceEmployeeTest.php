@@ -51,6 +51,11 @@ class FreelanceEmployeeTest extends TestCase
         $freelancer = User::query()->where('email', 'raka.freelance@rimprojects.id')->firstOrFail();
         $this->assertTrue($freelancer->isFreelancer());
 
+        // Freelancer cannot access /attendance page and is redirected to dashboard
+        $this->actingAs($freelancer)
+            ->get(route('attendance.index'))
+            ->assertRedirect(route('dashboard'));
+
         // 2. Freelancer is excluded from Dashboard total_employees & Attendance Monitoring
         $this->actingAs($superAdmin)
             ->get(route('dashboard'))

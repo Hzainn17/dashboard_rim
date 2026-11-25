@@ -26,9 +26,13 @@ class AttendanceController extends Controller
     /**
      * Display the personal attendance & overtime page (/attendance).
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
-        $user = $request->user();
+        $user = $request->user()->loadMissing('employee');
+        if ($user->isFreelancer() && ! $user->isAdmin()) {
+            return redirect()->route('dashboard');
+        }
+
         $today = Carbon::today();
         $officeSetting = OfficeSetting::current();
 

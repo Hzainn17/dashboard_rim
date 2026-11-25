@@ -48,7 +48,14 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
         : isAdmin
         ? regularAdminNav
         : karyawanNav.filter((item) => {
-              if (isFreelancer && (item.id === 'presensi-saya' || item.id === 'slip-gaji')) return false;
+              if (
+                  isFreelancer &&
+                  (item.id === 'presensi-harian' ||
+                      item.id === 'presensi-saya' ||
+                      item.id === 'slip-gaji')
+              ) {
+                  return false;
+              }
               if (isFieldWorker && item.id === 'projects') return false;
               if (!isFieldWorker && item.id === 'field-projects') return false;
               return true;
