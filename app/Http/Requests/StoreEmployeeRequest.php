@@ -36,7 +36,7 @@ class StoreEmployeeRequest extends FormRequest
             'department' => ['nullable', 'string', 'max:100'],
             'work_type' => ['nullable', Rule::in(['kantor', 'lapangan'])],
             'join_date' => ['required', 'date'],
-            'employment_status' => ['required', Rule::in(['tetap', 'kontrak', 'magang'])],
+            'employment_status' => ['required', Rule::in(['tetap', 'kontrak', 'magang', 'freelance'])],
             'annual_leave_quota' => ['required', 'integer', 'min:0', 'max:60'],
             'base_salary' => ['required', 'numeric', 'min:0'],
             'fixed_allowance' => ['nullable', 'numeric', 'min:0'],

@@ -39,7 +39,7 @@ export type EmployeeRecord = {
     department?: string | null;
     work_type?: 'kantor' | 'lapangan' | null;
     join_date?: string | null;
-    employment_status: 'tetap' | 'kontrak' | 'magang';
+    employment_status: 'tetap' | 'kontrak' | 'magang' | 'freelance';
     annual_leave_quota: number;
     base_salary?: number;
     fixed_allowance?: number;
@@ -56,6 +56,7 @@ export type EmployeeStats = {
     tetap: number;
     kontrak: number;
     magang: number;
+    freelance?: number;
 };
 
 const avatarTones = [
@@ -88,6 +89,7 @@ const statusBadgeStyle: Record<EmployeeRecord['employment_status'], { label: str
     tetap: { label: 'Tetap', className: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200' },
     kontrak: { label: 'Kontrak', className: 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200' },
     magang: { label: 'Magang', className: 'bg-stone-100 text-stone-700 ring-1 ring-inset ring-stone-300' },
+    freelance: { label: 'Freelance', className: 'bg-indigo-50 text-indigo-800 ring-1 ring-inset ring-indigo-200' },
 };
 
 const positionSuggestions = [
@@ -117,7 +119,7 @@ export function EmployeeManagement({
     const isAdmin = auth?.user?.role === 'super_admin';
 
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'Semua' | 'tetap' | 'kontrak' | 'magang'>('Semua');
+    const [statusFilter, setStatusFilter] = useState<'Semua' | 'tetap' | 'kontrak' | 'magang' | 'freelance'>('Semua');
     const [deptFilter, setDeptFilter] = useState<string>('Semua');
 
     const [modalOpen, setModalOpen] = useState(false);
@@ -308,8 +310,8 @@ export function EmployeeManagement({
                         </select>
 
                         {/* Status Pills */}
-                        <div role="tablist" aria-label="Filter status kerja" className="flex gap-1">
-                            {(['Semua', 'tetap', 'kontrak', 'magang'] as const).map((st) => (
+                        <div role="tablist" aria-label="Filter status kerja" className="flex flex-wrap gap-1">
+                            {(['Semua', 'tetap', 'kontrak', 'magang', 'freelance'] as const).map((st) => (
                                 <button
                                     key={st}
                                     type="button"
@@ -626,7 +628,7 @@ function EmployeeFormModal({
         department: employee?.department ?? 'Perencanaan',
         work_type: (employee?.work_type ?? 'kantor') as 'kantor' | 'lapangan',
         join_date: employee?.join_date ?? todayStr,
-        employment_status: (employee?.employment_status ?? 'tetap') as 'tetap' | 'kontrak' | 'magang',
+        employment_status: (employee?.employment_status ?? 'tetap') as 'tetap' | 'kontrak' | 'magang' | 'freelance',
         annual_leave_quota: employee?.annual_leave_quota ?? 12,
         base_salary: employee?.base_salary ?? 6000000,
         fixed_allowance: employee?.fixed_allowance ?? 500000,
@@ -831,14 +833,23 @@ function EmployeeFormModal({
                                 <select
                                     value={data.employment_status}
                                     onChange={(e) =>
-                                        setData('employment_status', e.target.value as 'tetap' | 'kontrak' | 'magang')
+                                        setData(
+                                            'employment_status',
+                                            e.target.value as 'tetap' | 'kontrak' | 'magang' | 'freelance',
+                                        )
                                     }
                                     className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none focus-visible:border-ring"
                                 >
                                     <option value="tetap">Karyawan Tetap</option>
                                     <option value="kontrak">Karyawan Kontrak</option>
                                     <option value="magang">Staf Magang</option>
+                                    <option value="freelance">Freelance / Mitra Proyek (Bebas Absen &amp; Payroll)</option>
                                 </select>
+                                {data.employment_status === 'freelance' && (
+                                    <p className="mt-1 text-[11px] text-indigo-700">
+                                        Akun Freelance tidak wajib absen harian &amp; dilewati dari Payroll bulanan, namun tetap bisa masuk proyek &amp; update Daily Tasks.
+                                    </p>
+                                )}
                             </div>
 
                             <div>

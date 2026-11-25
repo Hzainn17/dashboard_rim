@@ -64,10 +64,16 @@ export function DashboardOverview({ role }: { role: Role }) {
 
             <DailyFocusWidget role={role} />
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                <AttendanceWidget />
+            <div
+                className={
+                    auth?.isFreelancer
+                        ? 'grid grid-cols-1 gap-4 lg:grid-cols-2'
+                        : 'grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3'
+                }
+            >
+                {!auth?.isFreelancer && <AttendanceWidget />}
                 <StudioAgenda />
-                <div className="lg:col-span-2 xl:col-span-1">
+                <div className={auth?.isFreelancer ? '' : 'lg:col-span-2 xl:col-span-1'}>
                     <ActivityFeed />
                 </div>
             </div>

@@ -124,7 +124,10 @@ class DailyTaskController extends Controller
 
             $presenceStatus = 'belum_absen';
             $presenceLabel = 'Belum Check-in';
-            if ($leave) {
+            if ($staff->isFreelancer()) {
+                $presenceStatus = 'freelance';
+                $presenceLabel = 'Freelance';
+            } elseif ($leave) {
                 $presenceStatus = 'izin';
                 $presenceLabel = ucfirst($leave->type);
             } elseif ($att) {

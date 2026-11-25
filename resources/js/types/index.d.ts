@@ -12,7 +12,7 @@ export interface Employee {
     bank_account_number?: string | null;
     bank_account_holder?: string | null;
     annual_leave_quota: number;
-    employment_status: 'tetap' | 'kontrak' | 'magang';
+    employment_status: 'tetap' | 'kontrak' | 'magang' | 'freelance';
 }
 
 export interface User {
@@ -188,6 +188,7 @@ export type PageProps<
         pendingWfhToday?: boolean;
         secondsUntilCheckInOpen?: number;
         workType?: 'kantor' | 'lapangan';
+        isFreelancer?: boolean;
         targetWorkHours?: number;
         targetWorkMinutes?: number;
         unclosedPastAttendance?: {

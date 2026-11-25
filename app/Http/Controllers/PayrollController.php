@@ -80,7 +80,7 @@ class PayrollController extends Controller
         $activeEmployees = User::query()
             ->with('employee')
             ->where('is_active', true)
-            ->whereHas('employee')
+            ->whereHas('employee', fn ($q) => $q->where('employment_status', '!=', 'freelance'))
             ->orderBy('name')
             ->get()
             ->map(fn (User $u) => [
@@ -213,7 +213,7 @@ class PayrollController extends Controller
         $employeesQuery = User::query()
             ->with('employee')
             ->where('is_active', true)
-            ->whereHas('employee')
+            ->whereHas('employee', fn ($q) => $q->where('employment_status', '!=', 'freelance'))
             ->orderBy('name');
 
         if (! empty($validated['employee_ids'])) {

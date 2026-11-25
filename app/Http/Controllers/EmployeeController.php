@@ -72,6 +72,7 @@ class EmployeeController extends Controller
             'tetap' => $users->filter(fn (User $u) => ($u->employee?->employment_status ?? 'tetap') === 'tetap')->count(),
             'kontrak' => $users->filter(fn (User $u) => $u->employee?->employment_status === 'kontrak')->count(),
             'magang' => $users->filter(fn (User $u) => $u->employee?->employment_status === 'magang')->count(),
+            'freelance' => $users->filter(fn (User $u) => $u->employee?->employment_status === 'freelance')->count(),
         ];
 
         $nextNumber = Employee::query()->count() + 1;

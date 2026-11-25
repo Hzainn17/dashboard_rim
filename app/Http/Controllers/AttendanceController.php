@@ -1141,6 +1141,7 @@ class AttendanceController extends Controller
         $users = User::query()
             ->with('employee')
             ->where('is_active', true)
+            ->whereDoesntHave('employee', fn ($q) => $q->where('employment_status', 'freelance'))
             ->orderBy('id')
             ->get();
 

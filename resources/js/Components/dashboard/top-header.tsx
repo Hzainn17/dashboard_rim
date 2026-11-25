@@ -16,7 +16,8 @@ import { type PageProps } from '@/types';
 import { formatClock, useAttendance } from './attendance-context';
 
 export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
-    const { notifications: serverNotifications = [] } = usePage<PageProps>().props;
+    const { auth, notifications: serverNotifications = [] } = usePage<PageProps>().props;
+    const isFreelancer = Boolean(auth?.isFreelancer);
     const inputRef = useRef<HTMLInputElement>(null);
     const [isMac, setIsMac] = useState(true);
     const [items, setItems] = useState(serverNotifications);
@@ -121,41 +122,47 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
                     </time>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => router.visit(route('attendance.index'))}
-                    disabled={isWorking || hasCheckedOut}
-                    className={cn(
-                        'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
-                        isWorking || hasCheckedOut
-                            ? 'border bg-card text-success'
-                            : 'bg-primary text-primary-foreground hover:bg-primary/90',
-                    )}
-                >
-                    {isWorking || hasCheckedOut ? (
-                        <CheckCircle2 className="size-4" aria-hidden="true" />
-                    ) : (
-                        <LogIn className="size-4" aria-hidden="true" />
-                    )}
-                    <span className="hidden sm:inline">
-                        {hasCheckedOut
-                            ? 'Presensi Selesai'
-                            : isWorking
-                              ? 'Sudah Check-in'
-                              : isBeforeEightAm
-                                ? 'Buka 08:00 WIB'
-                                : 'Check-in Cepat'}
+                {isFreelancer ? (
+                    <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-800">
+                        Freelance · Proyek
                     </span>
-                    <span className="sm:hidden">
-                        {hasCheckedOut
-                            ? 'Selesai'
-                            : isWorking
-                              ? 'Hadir'
-                              : isBeforeEightAm
-                                ? '08:00'
-                                : 'Check-in'}
-                    </span>
-                </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => router.visit(route('attendance.index'))}
+                        disabled={isWorking || hasCheckedOut}
+                        className={cn(
+                            'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
+                            isWorking || hasCheckedOut
+                                ? 'border bg-card text-success'
+                                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+                        )}
+                    >
+                        {isWorking || hasCheckedOut ? (
+                            <CheckCircle2 className="size-4" aria-hidden="true" />
+                        ) : (
+                            <LogIn className="size-4" aria-hidden="true" />
+                        )}
+                        <span className="hidden sm:inline">
+                            {hasCheckedOut
+                                ? 'Presensi Selesai'
+                                : isWorking
+                                  ? 'Sudah Check-in'
+                                  : isBeforeEightAm
+                                    ? 'Buka 08:00 WIB'
+                                    : 'Check-in Cepat'}
+                        </span>
+                        <span className="sm:hidden">
+                            {hasCheckedOut
+                                ? 'Selesai'
+                                : isWorking
+                                  ? 'Hadir'
+                                  : isBeforeEightAm
+                                    ? '08:00'
+                                    : 'Check-in'}
+                        </span>
+                    </button>
+                )}
 
                 <DropdownMenu>
                     <DropdownMenuTrigger className="relative inline-flex size-9 items-center justify-center rounded-lg border bg-card text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30">

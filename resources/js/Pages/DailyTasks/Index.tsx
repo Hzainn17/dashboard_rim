@@ -37,7 +37,7 @@ interface TeamMemberBoard {
     position: string;
     department: string;
     is_lead?: boolean;
-    presence_status: 'hadir' | 'site_visit' | 'izin' | 'belum_absen';
+    presence_status: 'hadir' | 'site_visit' | 'izin' | 'freelance' | 'belum_absen';
     presence_label: string;
     tasks: DailyTaskItem[];
     done_count: number;
@@ -71,6 +71,7 @@ const presenceBadgeStyle: Record<TeamMemberBoard['presence_status'], string> = {
     hadir: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
     site_visit: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
     izin: 'bg-purple-50 text-purple-800 ring-1 ring-purple-200',
+    freelance: 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200',
     belum_absen: 'bg-stone-100 text-stone-600 ring-1 ring-stone-200',
 };
 

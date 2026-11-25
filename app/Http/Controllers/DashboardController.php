@@ -28,6 +28,7 @@ class DashboardController extends Controller
         $totalEmployees = User::query()
             ->where('is_active', true)
             ->where('role', '!=', UserRole::SuperAdmin)
+            ->whereDoesntHave('employee', fn ($q) => $q->where('employment_status', 'freelance'))
             ->count();
 
         $presentCount = Attendance::query()

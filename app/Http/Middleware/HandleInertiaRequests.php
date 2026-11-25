@@ -183,6 +183,7 @@ class HandleInertiaRequests extends Middleware
                 'pendingWfhToday' => $pendingWfhToday,
                 'secondsUntilCheckInOpen' => max(0, (int) now()->diffInSeconds(Carbon::today()->setTime(8, 0, 0), false)),
                 'workType' => $user?->employee?->work_type ?? 'kantor',
+                'isFreelancer' => $user ? $user->isFreelancer() : false,
                 'targetWorkHours' => $user ? $user->dailyTargetWorkHours() : 9,
                 'targetWorkMinutes' => $user ? $user->dailyTargetWorkMinutes() : 540,
                 'unclosedPastAttendance' => $unclosedPastAtt ? [

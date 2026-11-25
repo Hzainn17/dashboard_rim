@@ -82,6 +82,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine whether the user is a project-based freelancer (exempt from daily attendance & monthly payroll).
+     */
+    public function isFreelancer(): bool
+    {
+        return ($this->employee?->employment_status ?? 'tetap') === 'freelance';
+    }
+
+    /**
      * Daily target working hours: 8 hours for field workers (08:00-16:00),
      * or the studio standard (default 9 hours, 08:00-17:00) for office workers.
      */
