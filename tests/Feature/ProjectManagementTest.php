@@ -762,4 +762,58 @@ class ProjectManagementTest extends TestCase
                 ->where('timelineProjects.0.id', $activeProject->id)
             );
     }
+
+    public function test_timeline_print_preview_and_pdf_download_work_cleanly(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $project = Project::factory()->create([
+            'owner_id' => $admin->id,
+            'name' => 'Home Design Pak Rudy',
+            'client_name' => 'Bpk. Rudy',
+            'package_name' => 'Paket 3',
+            'building_area' => 180,
+            'start_date' => '2026-11-20',
+            'status' => 'ongoing',
+        ]);
+
+        $stages = [
+            ['name' => 'Tahap Konseptual V1', 'status' => 'completed', 'order' => 1],
+            ['name' => 'Tahap Konseptual V2', 'status' => 'active', 'order' => 2],
+            ['name' => 'Tahap Pengembangan V1', 'status' => 'pending', 'order' => 3],
+            ['name' => 'Tahap Pengembangan V2', 'status' => 'pending', 'order' => 4],
+            ['name' => 'DED', 'status' => 'pending', 'order' => 5],
+            ['name' => 'RAB', 'status' => 'pending', 'order' => 6],
+        ];
+
+        foreach ($stages as $s) {
+            ProjectStage::query()->create([
+                'project_id' => $project->id,
+                'name' => $s['name'],
+                'order' => $s['order'],
+                'status' => $s['status'],
+                'update_design_date' => '2026-12-01',
+                'client_response_date' => '2026-12-04',
+            ]);
+        }
+
+        // 1. Print preview HTML loads cleanly with Download PDF link
+        $this->actingAs($admin)
+            ->get("/projects/{$project->id}/timeline/print")
+            ->assertOk()
+            ->assertSee('TIMELINE PEKERJAAN')
+            ->assertSee('Download PDF (A4)');
+
+        // 2. Direct PDF download returns valid A4 PDF binary
+        $pdfResponse = $this->actingAs($admin)
+            ->get("/projects/{$project->id}/timeline/print?download=1")
+            ->assertOk();
+
+        $this->assertStringContainsString('application/pdf', (string) $pdfResponse->headers->get('content-type'));
+        $this->assertStringContainsString('Timeline-Pekerjaan-home-design-pak-rudy.pdf', (string) $pdfResponse->headers->get('content-disposition'));
+        $pdfContent = (string) $pdfResponse->getContent();
+        $this->assertStringStartsWith('%PDF-', $pdfContent);
+        // Ensure full 6-stage Paket 3 timeline fits cleanly on 1 A4 page
+        $pageCount = preg_match_all('/\/Type\s*\/Page\b/', $pdfContent);
+        $this->assertSame(1, $pageCount, 'Expected 6-stage Paket 3 timeline PDF to fit on 1 A4 page');
+    }
 }

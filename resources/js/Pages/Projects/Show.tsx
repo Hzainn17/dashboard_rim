@@ -14,6 +14,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Clock,
+    Download,
     Edit3,
     ExternalLink,
     FileText,
@@ -1614,13 +1615,20 @@ export default function ProjectShow({
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     <a
+                                        href={route('projects.timeline.print', { project: project.id, download: 1 })}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#46797b]/40 bg-[#46797b]/10 px-3 py-1.5 text-xs font-semibold text-[#355f61] transition-colors hover:bg-[#46797b]/20"
+                                    >
+                                        <Download className="size-3.5" />
+                                        <span>Download PDF Timeline</span>
+                                    </a>
+                                    <a
                                         href={route('projects.timeline.print', project.id)}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
                                     >
                                         <Printer className="size-3.5" />
-                                        <span>Cetak / PDF Timeline</span>
+                                        <span>Pratinjau / Cetak</span>
                                     </a>
                                     {isOwnerOrLead && (
                                         <button

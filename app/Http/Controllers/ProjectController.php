@@ -13,8 +13,10 @@ use App\Models\ProjectUpdate;
 use App\Models\User;
 use App\Services\ClientBriefTemplate;
 use App\Services\ProjectPackageService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -949,9 +951,9 @@ class ProjectController extends Controller
     }
 
     /**
-     * Printable official RIM Projects timeline document (/projects/{project}/timeline/print).
+     * Printable & downloadable official RIM Projects timeline document (/projects/{project}/timeline/print).
      */
-    public function printTimeline(Request $request, Project $project): View
+    public function printTimeline(Request $request, Project $project): View|HttpResponse
     {
         if (! $project->isAccessibleBy($request->user())) {
             abort(403);
@@ -960,10 +962,52 @@ class ProjectController extends Controller
         $project->load(['stages' => fn ($q) => $q->orderBy('order')]);
         $office = OfficeSetting::current();
 
-        return view('projects.timeline-print', [
+        $logoRel = $office->company_logo_url ?: '/rim-projects-logo.png';
+        $logoPath = public_path(ltrim($logoRel, '/'));
+        $logoDataUri = is_file($logoPath)
+            ? 'data:'.(mime_content_type($logoPath) ?: 'image/png').';base64,'.base64_encode((string) file_get_contents($logoPath))
+            : null;
+
+        $stageTemplates = ProjectPackageService::stageTemplates();
+        $stagesWithMeta = [];
+        $outputRows = [];
+
+        foreach ($project->stages as $stage) {
+            $tpl = $stageTemplates[$stage->name] ?? null;
+            $outputText = trim((string) ($stage->output_notes ?: ($tpl['output'] ?? '')));
+            $workdays = $stage->duration_workdays ?: ($tpl['workdays'] ?? null);
+
+            $stagesWithMeta[] = [
+                'stage' => $stage,
+                'workdays' => $workdays,
+            ];
+
+            if ($outputText !== '') {
+                $outputRows[] = [
+                    'name' => $stage->name,
+                    'output' => $outputText,
+                ];
+            }
+        }
+
+        $viewData = [
             'project' => $project,
             'office' => $office,
-        ]);
+            'logoDataUri' => $logoDataUri,
+            'stagesWithMeta' => $stagesWithMeta,
+            'outputRows' => $outputRows,
+        ];
+
+        if ($request->boolean('download')) {
+            $slugName = Str::slug($project->name) ?: 'proyek';
+            $filename = "Timeline-Pekerjaan-{$slugName}.pdf";
+
+            return Pdf::loadView('projects.timeline-pdf', $viewData)
+                ->setPaper('a4', 'portrait')
+                ->download($filename);
+        }
+
+        return view('projects.timeline-print', $viewData);
     }
 
     /**
