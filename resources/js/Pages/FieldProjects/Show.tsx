@@ -69,7 +69,7 @@ interface Props extends PageProps {
         google_maps_url?: string | null;
         embed_maps_url?: string | null;
         project_type: 'pembangunan' | 'desain_bangun';
-        status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold' | string;
+        status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done_unpaid' | 'done' | 'on_hold' | string;
         start_date?: string | null;
         start_date_formatted?: string | null;
         due_date?: string | null;
@@ -100,8 +100,12 @@ const STATUS_META: Record<string, { label: string; badgeClass: string }> = {
         label: 'Masa Retensi (Pemeliharaan)',
         badgeClass: 'bg-purple-50 text-purple-700 ring-purple-200',
     },
+    done_unpaid: {
+        label: 'Selesai · Menunggu Pelunasan',
+        badgeClass: 'bg-orange-50 text-orange-800 ring-orange-200',
+    },
     done: {
-        label: 'Selesai',
+        label: 'Selesai (Lunas)',
         badgeClass: 'bg-slate-100 text-slate-700 ring-slate-200',
     },
     on_hold: {
@@ -129,15 +133,22 @@ export default function FieldProjectsShow({
         location: project.location || '',
         maps_url: project.maps_url || '',
         project_type: project.project_type,
-        status: (['planning', 'ongoing', 'review', 'retention', 'done', 'on_hold'].includes(
-            project.status,
-        )
+        status: ([
+            'planning',
+            'ongoing',
+            'review',
+            'retention',
+            'done_unpaid',
+            'done',
+            'on_hold',
+        ].includes(project.status)
             ? project.status
             : 'ongoing') as
             | 'planning'
             | 'ongoing'
             | 'review'
             | 'retention'
+            | 'done_unpaid'
             | 'done'
             | 'on_hold',
         start_date: project.start_date || '',
@@ -737,6 +748,7 @@ export default function FieldProjectsShow({
                                                     | 'ongoing'
                                                     | 'review'
                                                     | 'retention'
+                                                    | 'done_unpaid'
                                                     | 'done'
                                                     | 'on_hold',
                                             )
@@ -747,8 +759,9 @@ export default function FieldProjectsShow({
                                         <option value="ongoing">Sedang Berjalan (Konstruksi)</option>
                                         <option value="review">Inspeksi / BAST 1</option>
                                         <option value="retention">Masa Retensi (Pemeliharaan)</option>
+                                        <option value="done_unpaid">Selesai (Menunggu Pelunasan / Cicilan)</option>
                                         <option value="on_hold">Ditunda Sementara</option>
-                                        <option value="done">Selesai (Serah Terima Akhir)</option>
+                                        <option value="done">Selesai (Lunas)</option>
                                     </select>
                                 </div>
 

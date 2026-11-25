@@ -41,7 +41,7 @@ interface FieldProjectItem {
     maps_url?: string | null;
     google_maps_url?: string | null;
     project_type: 'pembangunan' | 'desain_bangun';
-    status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold' | string;
+    status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done_unpaid' | 'done' | 'on_hold' | string;
     cover_image_url?: string | null;
     description?: string | null;
     start_date?: string | null;
@@ -66,6 +66,7 @@ interface Props extends PageProps {
         retention_projects: number;
         today_site_visits: number;
         done_projects: number;
+        unpaid_projects?: number;
     };
     teamMembers: TeamMemberOption[];
     filters: {
@@ -94,8 +95,12 @@ const STATUS_META: Record<
         label: 'Masa Retensi',
         badgeClass: 'bg-purple-50 text-purple-700 ring-purple-200',
     },
+    done_unpaid: {
+        label: 'Selesai · Menunggu Pelunasan',
+        badgeClass: 'bg-orange-50 text-orange-800 ring-orange-200',
+    },
     done: {
-        label: 'Selesai',
+        label: 'Selesai (Lunas)',
         badgeClass: 'bg-slate-100 text-slate-700 ring-slate-200',
     },
     on_hold: {
@@ -133,7 +138,7 @@ export default function FieldProjectsIndex({
         location: '',
         maps_url: '',
         project_type: 'pembangunan' as 'pembangunan' | 'desain_bangun',
-        status: 'ongoing' as 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold',
+        status: 'ongoing' as 'planning' | 'ongoing' | 'review' | 'retention' | 'done_unpaid' | 'done' | 'on_hold',
         start_date: new Date().toISOString().split('T')[0],
         due_date: '',
         description: '',
@@ -306,7 +311,9 @@ export default function FieldProjectsIndex({
                                 {metrics.done_projects}
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                Serah terima akhir tuntas
+                                {metrics.unpaid_projects && metrics.unpaid_projects > 0
+                                    ? `${metrics.unpaid_projects} masih menunggu pelunasan`
+                                    : 'Serah terima akhir tuntas'}
                             </p>
                         </div>
                         <div className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
@@ -347,8 +354,9 @@ export default function FieldProjectsIndex({
                             { id: 'planning', label: 'Persiapan' },
                             { id: 'review', label: 'Inspeksi / BAST' },
                             { id: 'retention', label: 'Masa Retensi' },
+                            { id: 'done_unpaid', label: 'Menunggu Pelunasan' },
                             { id: 'on_hold', label: 'Ditunda' },
-                            { id: 'done', label: 'Selesai' },
+                            { id: 'done', label: 'Selesai (Lunas)' },
                         ].map((tab) => (
                             <button
                                 key={tab.id}
@@ -689,6 +697,7 @@ export default function FieldProjectsIndex({
                                                     | 'ongoing'
                                                     | 'review'
                                                     | 'retention'
+                                                    | 'done_unpaid'
                                                     | 'done'
                                                     | 'on_hold',
                                             )
@@ -699,8 +708,9 @@ export default function FieldProjectsIndex({
                                         <option value="ongoing">Sedang Berjalan (Konstruksi)</option>
                                         <option value="review">Inspeksi / BAST 1</option>
                                         <option value="retention">Masa Retensi (Pemeliharaan)</option>
+                                        <option value="done_unpaid">Selesai (Menunggu Pelunasan / Cicilan)</option>
                                         <option value="on_hold">Ditunda Sementara</option>
-                                        <option value="done">Selesai (Serah Terima Akhir)</option>
+                                        <option value="done">Selesai (Lunas)</option>
                                     </select>
                                 </div>
 
