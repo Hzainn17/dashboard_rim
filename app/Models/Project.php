@@ -14,7 +14,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'name', 'client_name', 'client_phone', 'location', 'category',
-    'package_name', 'project_type', 'building_type', 'package_addons', 'building_area', 'estimated_budget', 'custom_scope_notes',
+    'package_name', 'project_type', 'building_type', 'package_addons', 'building_area',
+    'estimated_budget', 'custom_scope_notes',
     'cover_image_url', 'drive_url', 'description', 'status',
     'progress_percent', 'start_date', 'due_date', 'owner_id',
 ])]

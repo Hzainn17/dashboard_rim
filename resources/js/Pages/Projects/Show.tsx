@@ -769,6 +769,16 @@ export default function ProjectShow({
                                             : 'Perencanaan'}
                                     </span>
                                 )}
+                                {(project.project_type === 'pembangunan' ||
+                                    project.project_type === 'desain_bangun') && (
+                                    <Link
+                                        href={route('projects.field.show', project.id)}
+                                        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300 transition-colors hover:bg-amber-200"
+                                    >
+                                        <HardHat className="size-3" />
+                                        Workspace Konstruksi Lapangan →
+                                    </Link>
+                                )}
                             </div>
 
                             <h1 className="mt-2.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">

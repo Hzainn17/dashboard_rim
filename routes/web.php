@@ -5,6 +5,7 @@ use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DailyTaskController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\FieldProjectController;
 use App\Http\Controllers\MyProfileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PayrollController;
@@ -42,9 +43,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/attendance/checkout-and-overtime', [AttendanceController::class, 'checkoutAndOvertime'])->name('attendance.checkout-and-overtime');
     });
 
-    // Project Management & Notion-style Kanban
+    // Project Management & Notion-style Kanban (Perencanaan) + Simple Field Projects (Lapangan)
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
-    Route::get('/field-projects', [ProjectController::class, 'fieldIndex'])->name('projects.field');
+    Route::get('/field-projects', [FieldProjectController::class, 'index'])->name('projects.field');
+    Route::post('/field-projects', [FieldProjectController::class, 'store'])->name('projects.field.store');
+    Route::get('/field-projects/{project}', [FieldProjectController::class, 'show'])->name('projects.field.show');
+    Route::put('/field-projects/{project}', [FieldProjectController::class, 'update'])->name('projects.field.update');
+    Route::delete('/field-projects/{project}', [FieldProjectController::class, 'destroy'])->name('projects.field.destroy');
+
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');

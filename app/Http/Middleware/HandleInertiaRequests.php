@@ -246,6 +246,7 @@ class HandleInertiaRequests extends Middleware
                 'employee.status_toggled',
                 'employee.deleted',
                 'settings.updated',
+                'construction.contract_updated',
             ]);
         }
 
@@ -260,6 +261,7 @@ class HandleInertiaRequests extends Middleware
                     str_starts_with($action, 'payroll.') => $user->isSuperAdmin() ? route('payroll.index') : route('my-profile.index'),
                     str_starts_with($action, 'employee.') => $user->isSuperAdmin() ? route('employees.index') : route('dashboard'),
                     str_starts_with($action, 'project.') => route('projects.index'),
+                    str_starts_with($action, 'field_project.'), str_starts_with($action, 'construction.') => route('projects.field'),
                     str_starts_with($action, 'daily_task.') => route('daily-tasks.index'),
                     str_starts_with($action, 'calendar.') => route('calendar.index'),
                     str_starts_with($action, 'attendance.'), str_starts_with($action, 'leave.'), str_starts_with($action, 'overtime.') => $user->isSuperAdmin() ? route('attendance.approvals') : route('attendance.index'),
