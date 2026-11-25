@@ -7,7 +7,7 @@ import {
     Camera,
     Clock,
     Edit3,
-    FolderKanban,
+    ExternalLink,
     HardHat,
     MapPin,
     MessageSquarePlus,
@@ -65,8 +65,11 @@ interface Props extends PageProps {
         client_name: string;
         client_phone?: string | null;
         location?: string | null;
+        maps_url?: string | null;
+        google_maps_url?: string | null;
+        embed_maps_url?: string | null;
         project_type: 'pembangunan' | 'desain_bangun';
-        status: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold' | string;
+        status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold' | string;
         start_date?: string | null;
         start_date_formatted?: string | null;
         due_date?: string | null;
@@ -90,8 +93,12 @@ const STATUS_META: Record<string, { label: string; badgeClass: string }> = {
         badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     },
     review: {
-        label: 'Inspeksi / BAST',
+        label: 'Inspeksi / BAST 1',
         badgeClass: 'bg-amber-50 text-amber-800 ring-amber-200',
+    },
+    retention: {
+        label: 'Masa Retensi (Pemeliharaan)',
+        badgeClass: 'bg-purple-50 text-purple-700 ring-purple-200',
     },
     done: {
         label: 'Selesai',
@@ -120,10 +127,19 @@ export default function FieldProjectsShow({
         client_name: project.client_name,
         client_phone: project.client_phone || '',
         location: project.location || '',
+        maps_url: project.maps_url || '',
         project_type: project.project_type,
-        status: (['planning', 'ongoing', 'done', 'on_hold'].includes(project.status)
+        status: (['planning', 'ongoing', 'review', 'retention', 'done', 'on_hold'].includes(
+            project.status,
+        )
             ? project.status
-            : 'ongoing') as 'planning' | 'ongoing' | 'done' | 'on_hold',
+            : 'ongoing') as
+            | 'planning'
+            | 'ongoing'
+            | 'review'
+            | 'retention'
+            | 'done'
+            | 'on_hold',
         start_date: project.start_date || '',
         due_date: project.due_date || '',
         description: project.description || '',
@@ -188,16 +204,6 @@ export default function FieldProjectsShow({
                     </Link>
 
                     <div className="flex flex-wrap items-center gap-2">
-                        {project.project_type === 'desain_bangun' && isAdmin && (
-                            <Link
-                                href={route('projects.show', project.id)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-2xs transition hover:bg-muted"
-                            >
-                                <FolderKanban className="size-3.5 text-indigo-600" />
-                                Workspace Perencanaan
-                            </Link>
-                        )}
-
                         <Link
                             href={route('attendance.index')}
                             className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-amber-700"
@@ -258,60 +264,112 @@ export default function FieldProjectsShow({
                     )}
 
                     <div className="mt-4 grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <div className="flex items-start gap-2.5 rounded-xl bg-amber-50/70 p-3 ring-1 ring-amber-200/60">
-                            <MapPin className="mt-0.5 size-4 shrink-0 text-amber-700" />
-                            <div className="min-w-0">
-                                <p className="text-[11px] font-medium text-amber-800/80">
-                                    Lokasi Proyek
-                                </p>
-                                <p className="text-xs font-semibold text-amber-950">
-                                    {project.location || 'Belum diisi'}
-                                </p>
+                        <div className="flex flex-col justify-between gap-2.5 rounded-xl bg-amber-50/70 p-3.5 ring-1 ring-amber-200/70">
+                            <div className="flex items-start gap-2.5">
+                                <MapPin className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-medium text-amber-800/80">
+                                        Lokasi Proyek
+                                    </p>
+                                    <p className="mt-0.5 text-xs font-semibold leading-relaxed text-amber-950">
+                                        {project.location || 'Belum diisi'}
+                                    </p>
+                                </div>
                             </div>
+
+                            {project.google_maps_url && (
+                                <a
+                                    href={project.google_maps_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 shadow-2xs ring-1 ring-amber-300/80 transition hover:bg-amber-100"
+                                >
+                                    <MapPin className="size-3 text-rose-600" />
+                                    {project.maps_url
+                                        ? 'Buka Titik Google Maps'
+                                        : 'Cari di Google Maps'}
+                                    <ExternalLink className="size-3 text-amber-700" />
+                                </a>
+                            )}
                         </div>
 
-                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3">
+                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3.5">
                             <Phone className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0">
                                 <p className="text-[11px] font-medium text-muted-foreground">
                                     Klien / Owner
                                 </p>
-                                <p className="truncate text-xs font-semibold text-foreground">
+                                <p className="mt-0.5 truncate text-xs font-semibold text-foreground">
                                     {project.client_name}
                                 </p>
                                 {project.client_phone && (
-                                    <p className="text-[11px] text-muted-foreground">
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">
                                         {project.client_phone}
                                     </p>
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3">
+                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3.5">
                             <Calendar className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0">
                                 <p className="text-[11px] font-medium text-muted-foreground">
                                     Jadwal Pelaksanaan
                                 </p>
-                                <p className="text-xs font-semibold text-foreground">
+                                <p className="mt-0.5 text-xs font-semibold text-foreground">
                                     {project.start_date_formatted || '-'} s/d{' '}
                                     {project.due_date_formatted || 'Berjalan'}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3">
+                        <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3.5">
                             <Camera className="mt-0.5 size-4 shrink-0 text-amber-600" />
                             <div className="min-w-0">
                                 <p className="text-[11px] font-medium text-muted-foreground">
                                     Total Kunjungan
                                 </p>
-                                <p className="text-xs font-semibold text-foreground">
+                                <p className="mt-0.5 text-xs font-semibold text-foreground">
                                     {siteVisits.length} Absensi Site Visit
                                 </p>
                             </div>
                         </div>
                     </div>
+
+                    {/* Interactive Google Maps Preview */}
+                    {project.embed_maps_url && (
+                        <div className="mt-4 overflow-hidden rounded-xl border bg-muted/20">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3.5 py-2">
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                    <MapPin className="size-3.5 text-rose-600" />
+                                    Peta Lokasi Proyek
+                                    {project.maps_url && (
+                                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                            Link Pin Google Maps Tersimpan
+                                        </span>
+                                    )}
+                                </div>
+                                {project.google_maps_url && (
+                                    <a
+                                        href={project.google_maps_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline"
+                                    >
+                                        Navigasi di Google Maps
+                                        <ExternalLink className="size-3" />
+                                    </a>
+                                )}
+                            </div>
+                            <iframe
+                                title={`Peta lokasi ${project.name}`}
+                                src={project.embed_maps_url}
+                                className="h-48 w-full border-0 sm:h-56"
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                            />
+                        </div>
+                    )}
 
                     {/* Assigned Field Team */}
                     <div className="mt-4 border-t pt-4">
@@ -472,7 +530,7 @@ export default function FieldProjectsShow({
                                 Catatan Lapangan
                             </h2>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                Catat progres singkat atau kendala di lokasi
+                                Catat progres singkat, kendala, atau perbaikan masa retensi
                             </p>
 
                             <form onSubmit={handleNoteSubmit} className="mt-3 space-y-2.5">
@@ -506,7 +564,7 @@ export default function FieldProjectsShow({
                                     updates.map((u) => (
                                         <div
                                             key={u.id}
-                                            className="rounded-xl bg-muted/40 p-3 text-xs space-y-1"
+                                            className="space-y-1 rounded-xl bg-muted/40 p-3 text-xs"
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="font-semibold text-foreground">
@@ -617,7 +675,7 @@ export default function FieldProjectsShow({
 
                                 <div className="sm:col-span-2">
                                     <label className="mb-1 block text-xs font-semibold text-foreground">
-                                        Lokasi Proyek <span className="text-rose-500">*</span>
+                                        Alamat / Lokasi Proyek <span className="text-rose-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -626,6 +684,24 @@ export default function FieldProjectsShow({
                                         onChange={(e) => editForm.setData('location', e.target.value)}
                                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                                     />
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="mb-1 block text-xs font-semibold text-foreground">
+                                        Link Titik Google Maps (Opsional)
+                                    </label>
+                                    <input
+                                        type="url"
+                                        value={editForm.data.maps_url}
+                                        onChange={(e) => editForm.setData('maps_url', e.target.value)}
+                                        placeholder="https://maps.app.goo.gl/..."
+                                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                                    />
+                                    {editForm.errors.maps_url && (
+                                        <p className="mt-1 text-xs text-rose-600">
+                                            {editForm.errors.maps_url}
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -649,7 +725,7 @@ export default function FieldProjectsShow({
 
                                 <div>
                                     <label className="mb-1 block text-xs font-semibold text-foreground">
-                                        Status Lapangan
+                                        Tahapan Status Lapangan
                                     </label>
                                     <select
                                         value={editForm.data.status}
@@ -659,16 +735,20 @@ export default function FieldProjectsShow({
                                                 e.target.value as
                                                     | 'planning'
                                                     | 'ongoing'
+                                                    | 'review'
+                                                    | 'retention'
                                                     | 'done'
                                                     | 'on_hold',
                                             )
                                         }
                                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                                     >
-                                        <option value="ongoing">Sedang Berjalan</option>
                                         <option value="planning">Persiapan Lapangan</option>
+                                        <option value="ongoing">Sedang Berjalan (Konstruksi)</option>
+                                        <option value="review">Inspeksi / BAST 1</option>
+                                        <option value="retention">Masa Retensi (Pemeliharaan)</option>
                                         <option value="on_hold">Ditunda Sementara</option>
-                                        <option value="done">Selesai</option>
+                                        <option value="done">Selesai (Serah Terima Akhir)</option>
                                     </select>
                                 </div>
 

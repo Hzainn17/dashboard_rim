@@ -27,7 +27,7 @@ export interface UnifiedProjectCardData {
     category: string;
     project_type?: 'perencanaan' | 'pembangunan' | 'desain_bangun' | null;
     phase?: string;
-    status?: 'survey' | 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold';
+    status?: 'survey' | 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold' | string;
     cover_image_url?: string | null;
     progress_percent: number;
     days_left?: number | null;
@@ -134,8 +134,12 @@ export function ProjectCard({ project }: { project: UnifiedProjectCardData }) {
             ? 'Asistensi'
             : 'DED');
 
+    const isFieldProject =
+        project.project_type === 'pembangunan' || project.project_type === 'desain_bangun';
     const href =
-        typeof project.id === 'number' ? route('projects.show', project.id) : '#';
+        typeof project.id === 'number'
+            ? route(isFieldProject ? 'projects.field.show' : 'projects.show', project.id)
+            : '#';
 
     return (
         <article className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-[0_8px_30px_-12px_rgb(0_0_0/0.18)]">

@@ -71,27 +71,33 @@ class FieldProjectController extends Controller
             ->whereIn('site_visit_project_id', $projectIds)
             ->count();
 
-        $formattedProjects = $projects->map(fn (Project $p): array => [
-            'id' => $p->id,
-            'name' => $p->name,
-            'client_name' => $p->client_name,
-            'client_phone' => $p->client_phone,
-            'location' => $p->location,
-            'project_type' => $p->project_type ?? 'pembangunan',
-            'status' => $p->status,
-            'cover_image_url' => $p->cover_image_url,
-            'description' => $p->description,
-            'start_date' => $p->start_date?->format('Y-m-d'),
-            'due_date' => $p->due_date?->format('Y-m-d'),
-            'due_date_formatted' => $p->due_date?->translatedFormat('d M Y'),
-            'site_visit_count' => (int) ($siteVisitCounts[$p->id] ?? 0),
-            'members' => $p->members->map(fn (User $m): array => [
-                'id' => $m->id,
-                'name' => $m->name,
-                'photo_url' => $m->photo_url,
-                'role_in_project' => $m->pivot->role_in_project ?? 'Tim Lapangan',
-            ])->values()->all(),
-        ])->values();
+        $formattedProjects = $projects->map(function (Project $p) use ($siteVisitCounts): array {
+            $normalizedLoc = Project::normalizeLocationAndMaps($p->location, $p->maps_url);
+
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'client_name' => $p->client_name,
+                'client_phone' => $p->client_phone,
+                'location' => $normalizedLoc['location'],
+                'maps_url' => $normalizedLoc['maps_url'],
+                'google_maps_url' => $p->googleMapsUrl(),
+                'project_type' => $p->project_type ?? 'pembangunan',
+                'status' => $p->status,
+                'cover_image_url' => $p->cover_image_url,
+                'description' => $p->description,
+                'start_date' => $p->start_date?->format('Y-m-d'),
+                'due_date' => $p->due_date?->format('Y-m-d'),
+                'due_date_formatted' => $p->due_date?->translatedFormat('d M Y'),
+                'site_visit_count' => (int) ($siteVisitCounts[$p->id] ?? 0),
+                'members' => $p->members->map(fn (User $m): array => [
+                    'id' => $m->id,
+                    'name' => $m->name,
+                    'photo_url' => $m->photo_url,
+                    'role_in_project' => $m->pivot->role_in_project ?? 'Tim Lapangan',
+                ])->values()->all(),
+            ];
+        })->values();
 
         $allFieldProjects = Project::query()
             ->whereIn('project_type', Project::FIELD_TYPES)
@@ -122,6 +128,7 @@ class FieldProjectController extends Controller
             'projects' => $formattedProjects,
             'metrics' => [
                 'active_projects' => $allFieldProjects->whereIn('status', ['planning', 'ongoing', 'review'])->count(),
+                'retention_projects' => $allFieldProjects->where('status', 'retention')->count(),
                 'today_site_visits' => $todaySiteVisits,
                 'done_projects' => $allFieldProjects->where('status', 'done')->count(),
             ],
@@ -147,9 +154,10 @@ class FieldProjectController extends Controller
             'name' => ['required', 'string', 'max:180'],
             'client_name' => ['required', 'string', 'max:150'],
             'client_phone' => ['nullable', 'string', 'max:25'],
-            'location' => ['required', 'string', 'max:255'],
+            'location' => ['required', 'string', 'max:500'],
+            'maps_url' => ['nullable', 'url', 'max:500'],
             'project_type' => ['required', Rule::in(['pembangunan', 'desain_bangun'])],
-            'status' => ['required', Rule::in(['planning', 'ongoing', 'done', 'on_hold'])],
+            'status' => ['required', Rule::in(['planning', 'ongoing', 'review', 'retention', 'done', 'on_hold'])],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'description' => ['nullable', 'string', 'max:1000'],
@@ -157,6 +165,11 @@ class FieldProjectController extends Controller
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => ['exists:users,id'],
         ]);
+
+        $normalizedLoc = Project::normalizeLocationAndMaps(
+            $validated['location'],
+            $validated['maps_url'] ?? null,
+        );
 
         $coverUrl = null;
         if ($request->hasFile('cover_image')) {
@@ -175,7 +188,8 @@ class FieldProjectController extends Controller
             'name' => $validated['name'],
             'client_name' => $validated['client_name'],
             'client_phone' => $validated['client_phone'] ?? null,
-            'location' => $validated['location'],
+            'location' => $normalizedLoc['location'],
+            'maps_url' => $normalizedLoc['maps_url'],
             'category' => 'Konstruksi',
             'project_type' => $validated['project_type'],
             'building_type' => 'rumah_hunian',
@@ -222,9 +236,10 @@ class FieldProjectController extends Controller
             'name' => ['required', 'string', 'max:180'],
             'client_name' => ['required', 'string', 'max:150'],
             'client_phone' => ['nullable', 'string', 'max:25'],
-            'location' => ['required', 'string', 'max:255'],
+            'location' => ['required', 'string', 'max:500'],
+            'maps_url' => ['nullable', 'url', 'max:500'],
             'project_type' => ['required', Rule::in(['pembangunan', 'desain_bangun'])],
-            'status' => ['required', Rule::in(['planning', 'ongoing', 'done', 'on_hold'])],
+            'status' => ['required', Rule::in(['planning', 'ongoing', 'review', 'retention', 'done', 'on_hold'])],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'description' => ['nullable', 'string', 'max:1000'],
@@ -232,11 +247,17 @@ class FieldProjectController extends Controller
             'member_ids.*' => ['exists:users,id'],
         ]);
 
+        $normalizedLoc = Project::normalizeLocationAndMaps(
+            $validated['location'],
+            $validated['maps_url'] ?? null,
+        );
+
         $project->update([
             'name' => $validated['name'],
             'client_name' => $validated['client_name'],
             'client_phone' => $validated['client_phone'] ?? null,
-            'location' => $validated['location'],
+            'location' => $normalizedLoc['location'],
+            'maps_url' => $normalizedLoc['maps_url'],
             'project_type' => $validated['project_type'],
             'status' => $validated['status'],
             'start_date' => $validated['start_date'] ?? $project->start_date,
@@ -331,13 +352,18 @@ class FieldProjectController extends Controller
             ])
             ->values();
 
+        $normalizedLoc = Project::normalizeLocationAndMaps($project->location, $project->maps_url);
+
         return Inertia::render('FieldProjects/Show', [
             'project' => [
                 'id' => $project->id,
                 'name' => $project->name,
                 'client_name' => $project->client_name,
                 'client_phone' => $project->client_phone,
-                'location' => $project->location,
+                'location' => $normalizedLoc['location'],
+                'maps_url' => $normalizedLoc['maps_url'],
+                'google_maps_url' => $project->googleMapsUrl(),
+                'embed_maps_url' => $project->embedMapsUrl(),
                 'project_type' => $project->project_type ?? 'pembangunan',
                 'status' => $project->status,
                 'start_date' => $project->start_date?->format('Y-m-d'),

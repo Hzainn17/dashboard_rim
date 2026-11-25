@@ -70,7 +70,7 @@ class ProjectController extends Controller
 
         $sectionTypes = $section === 'field'
             ? Project::FIELD_TYPES
-            : ['perencanaan', 'desain_bangun'];
+            : ['perencanaan'];
 
         $query = Project::query()
             ->with(['stages', 'members.employee', 'tasks'])
@@ -166,7 +166,8 @@ class ProjectController extends Controller
                     'name' => $p->name,
                     'client_name' => $p->client_name,
                     'client_phone' => $p->client_phone,
-                    'location' => $p->location,
+                    'location' => $p->cleanLocation(),
+                    'maps_url' => $p->maps_url,
                     'category' => $p->package_name ?: ($p->category ?: 'Paket 1'),
                     'package_name' => $p->package_name ?: ($p->category ?: 'Paket 1'),
                     'project_type' => $p->project_type ?? 'perencanaan',

@@ -526,7 +526,8 @@ class ProjectManagementTest extends TestCase
             ->get(route('projects.index'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('section', 'planning')
-                ->has('projects', 2));
+                ->has('projects', 1)
+                ->where('projects.0.id', $planningOnly->id));
 
         $this->actingAs($admin)
             ->get(route('projects.field'))

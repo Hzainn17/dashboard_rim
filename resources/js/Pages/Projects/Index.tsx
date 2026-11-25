@@ -525,21 +525,6 @@ export default function ProjectIndex({
                                     <option value="on_hold">Ditunda</option>
                                 </select>
                             )}
-
-                            <select
-                                value={selectedType}
-                                onChange={(e) => handleTypeChange(e.target.value)}
-                                className="h-9 rounded-lg border bg-background px-3 text-xs font-medium text-foreground focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
-                                aria-label="Filter lingkup proyek"
-                            >
-                                <option value="all">Semua Lingkup</option>
-                                <option value="lapangan">Berjalan di Lapangan</option>
-                                {Object.entries(projectTypes).map(([value, label]) => (
-                                    <option key={value} value={value}>
-                                        {label}
-                                    </option>
-                                ))}
-                            </select>
                         </div>
                     </div>
 
@@ -671,54 +656,6 @@ export default function ProjectIndex({
                                     {errors.name && (
                                         <p className="mt-1 text-xs text-rose-500">{errors.name}</p>
                                     )}
-                                </div>
-
-                                <div className="sm:col-span-2">
-                                    <label className="text-xs font-semibold text-foreground">
-                                        Lingkup Proyek <span className="text-rose-500">*</span>
-                                    </label>
-                                    <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                        {[
-                                            {
-                                                value: 'perencanaan',
-                                                title: 'Perencanaan',
-                                                desc: 'Desain / gambar saja, tanpa fisik lapangan',
-                                            },
-                                            {
-                                                value: 'pembangunan',
-                                                title: 'Pembangunan',
-                                                desc: 'Fisik / kontraktor, dikerjakan tim lapangan',
-                                            },
-                                            {
-                                                value: 'desain_bangun',
-                                                title: 'Desain & Bangun',
-                                                desc: 'Perencanaan dilanjut pembangunan fisik',
-                                            },
-                                        ].map((opt) => {
-                                            const active = data.project_type === opt.value;
-                                            return (
-                                                <button
-                                                    key={opt.value}
-                                                    type="button"
-                                                    onClick={() => setData('project_type', opt.value)}
-                                                    className={cn(
-                                                        'rounded-lg border p-2.5 text-left transition-colors',
-                                                        active
-                                                            ? 'border-[#46797b] bg-[#46797b]/10 ring-1 ring-[#46797b]'
-                                                            : 'bg-background hover:bg-muted',
-                                                    )}
-                                                >
-                                                    <p className="text-xs font-semibold text-foreground">{opt.title}</p>
-                                                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                                                        {opt.desc}
-                                                    </p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                        Proyek Pembangunan &amp; Desain-Bangun akan muncul di pilihan Site Visit karyawan lapangan.
-                                    </p>
                                 </div>
 
                                 <div className="sm:col-span-2">

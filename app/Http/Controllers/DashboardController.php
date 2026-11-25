@@ -45,7 +45,7 @@ class DashboardController extends Controller
             ->distinct('user_id')
             ->count('user_id');
 
-        $activeStatuses = ['planning', 'ongoing', 'review'];
+        $activeStatuses = ['planning', 'ongoing', 'review', 'retention'];
 
         $activeProjectsCount = Project::query()
             ->whereIn('status', $activeStatuses)
@@ -67,7 +67,7 @@ class DashboardController extends Controller
 
         $userProjectTypes = $user->isFieldWorker()
             ? Project::FIELD_TYPES
-            : ['perencanaan', 'desain_bangun'];
+            : ['perencanaan'];
 
         $myActiveProjects = Project::query()
             ->whereIn('status', $activeStatuses)
@@ -142,18 +142,22 @@ class DashboardController extends Controller
             ->map(function (Project $project) use ($today) {
                 $daysLeft = $project->due_date ? (int) $today->diffInDays($project->due_date, false) : null;
                 $activeStage = $project->stages->firstWhere('status', 'active') ?? $project->stages->first();
-                $phase = $activeStage ? preg_replace('/^\d+\.\s*/', '', $activeStage->name) : 'Konsep';
+                $phase = $activeStage
+                    ? preg_replace('/^\d+\.\s*/', '', $activeStage->name)
+                    : ($project->hasFieldSite() ? 'Konstruksi' : 'Konsep');
                 if ($project->status === 'done') {
                     $phase = 'Selesai';
+                } elseif ($project->status === 'retention') {
+                    $phase = 'Masa Retensi';
                 } elseif ($project->status === 'review' && ! $activeStage) {
-                    $phase = 'Asistensi';
+                    $phase = $project->hasFieldSite() ? 'Inspeksi / BAST' : 'Asistensi';
                 }
 
                 return [
                     'id' => $project->id,
                     'name' => $project->name,
                     'client_name' => $project->client_name,
-                    'location' => $project->location,
+                    'location' => $project->cleanLocation(),
                     'category' => $project->package_name ?: ($project->category ?: 'Paket 1'),
                     'project_type' => $project->project_type ?? 'perencanaan',
                     'phase' => $phase,

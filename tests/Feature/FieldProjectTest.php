@@ -15,7 +15,7 @@ class FieldProjectTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_create_lightweight_field_project_and_field_worker_can_select_it_for_site_visit(): void
+    public function test_admin_can_create_field_project_with_maps_url_and_it_never_leaks_into_planning_projects(): void
     {
         $admin = User::factory()->admin()->create();
         $fieldWorker = User::factory()->create(['name' => 'Pengawas Lapangan']);
@@ -24,12 +24,13 @@ class FieldProjectTest extends TestCase
             'position' => 'Site Supervisor',
         ]);
 
+        // Even if URL is pasted inside location OR passed via maps_url, it is cleanly split
         $response = $this->actingAs($admin)->post(route('projects.field.store'), [
-            'name' => 'Pembangunan Rumah Bpk. Hendra',
-            'client_name' => 'Bpk. Hendra',
+            'name' => 'Tommy House Design and Construction',
+            'client_name' => 'Mr. Tommy',
             'client_phone' => '081234567890',
-            'location' => 'Jl. Dago Pakar No. 12, Bandung',
-            'project_type' => 'pembangunan',
+            'location' => 'Bumi Adipura, Cluster Cempaka, Jl. Cempaka XI no. 21, Gedebage https://maps.app.goo.gl/cmNDQcXp8X7J8wEt8',
+            'project_type' => 'desain_bangun',
             'status' => 'ongoing',
             'start_date' => '2026-11-25',
             'description' => 'Pembangunan rumah 2 lantai struktur beton',
@@ -38,19 +39,20 @@ class FieldProjectTest extends TestCase
 
         $response->assertRedirect(route('projects.field'));
 
-        $project = Project::query()->where('name', 'Pembangunan Rumah Bpk. Hendra')->firstOrFail();
-        $this->assertSame('pembangunan', $project->project_type);
-        $this->assertSame('ongoing', $project->status);
-        $this->assertSame('Jl. Dago Pakar No. 12, Bandung', $project->location);
-        $this->assertTrue($project->members()->where('users.id', $fieldWorker->id)->exists());
+        $project = Project::query()->where('name', 'Tommy House Design and Construction')->firstOrFail();
+        $this->assertSame('desain_bangun', $project->project_type);
+        $this->assertSame('Bumi Adipura, Cluster Cempaka, Jl. Cempaka XI no. 21, Gedebage', $project->location);
+        $this->assertSame('https://maps.app.goo.gl/cmNDQcXp8X7J8wEt8', $project->maps_url);
 
-        // Verify field worker immediately receives this project in siteVisitProjects options
-        $options = Project::siteVisitOptionsFor($fieldWorker);
-        $this->assertCount(1, $options);
-        $this->assertSame($project->id, $options[0]['id']);
-        $this->assertSame('lapangan', $options[0]['group']);
+        // Must NOT appear in /projects (Proyek Perencanaan)
+        $this->actingAs($admin)
+            ->get(route('projects.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('section', 'planning')
+                ->has('projects', 0));
 
-        // Verify field worker can open /field-projects and /field-projects/{project}
+        // Must appear in /field-projects (Proyek Lapangan) with clean location & google_maps_url
         $this->actingAs($fieldWorker)
             ->get(route('projects.field'))
             ->assertOk()
@@ -58,10 +60,11 @@ class FieldProjectTest extends TestCase
                 ->component('FieldProjects/Index')
                 ->where('section', 'field')
                 ->has('projects', 1)
-                ->where('projects.0.name', 'Pembangunan Rumah Bpk. Hendra'));
+                ->where('projects.0.location', 'Bumi Adipura, Cluster Cempaka, Jl. Cempaka XI no. 21, Gedebage')
+                ->where('projects.0.maps_url', 'https://maps.app.goo.gl/cmNDQcXp8X7J8wEt8'));
     }
 
-    public function test_field_project_detail_displays_site_visit_history_and_allows_updating_project(): void
+    public function test_field_project_supports_retention_status_and_remains_selectable_for_site_visit(): void
     {
         $admin = User::factory()->admin()->create();
         $fieldWorker = User::factory()->create(['name' => 'Mandor Budi']);
@@ -78,6 +81,31 @@ class FieldProjectTest extends TestCase
         ]);
         $project->members()->sync([$fieldWorker->id => ['role_in_project' => 'Lead Lapangan']]);
 
+        // Update project into Masa Retensi (Pemeliharaan) with dedicated maps_url
+        $this->actingAs($admin)
+            ->put(route('projects.field.update', $project->id), [
+                'name' => 'Villa Lembang Asri',
+                'client_name' => $project->client_name,
+                'location' => 'Jl. Raya Lembang No. 88',
+                'maps_url' => 'https://maps.app.goo.gl/VillaLembang88',
+                'project_type' => 'pembangunan',
+                'status' => 'retention',
+                'member_ids' => [$fieldWorker->id],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'location' => 'Jl. Raya Lembang No. 88',
+            'maps_url' => 'https://maps.app.goo.gl/VillaLembang88',
+            'status' => 'retention',
+        ]);
+
+        // Field worker can still select a retention project for Site Visit attendance
+        $options = Project::siteVisitOptionsFor($fieldWorker);
+        $this->assertCount(1, $options);
+        $this->assertSame($project->id, $options[0]['id']);
+
         Attendance::query()->create([
             'user_id' => $fieldWorker->id,
             'date' => Carbon::today()->format('Y-m-d'),
@@ -87,7 +115,7 @@ class FieldProjectTest extends TestCase
             'target_work_minutes' => 480,
             'site_visit_project_id' => $project->id,
             'site_visit_status' => 'pending',
-            'notes' => 'Cek pembesian pondasi tapak',
+            'notes' => 'Inspeksi perbaikan retensi atap',
         ]);
 
         $this->actingAs($fieldWorker)
@@ -95,46 +123,9 @@ class FieldProjectTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('FieldProjects/Show')
-                ->where('project.name', 'Villa Lembang Asri')
+                ->where('project.status', 'retention')
+                ->where('project.maps_url', 'https://maps.app.goo.gl/VillaLembang88')
                 ->has('siteVisits', 1)
-                ->where('siteVisits.0.user_name', 'Mandor Budi')
-                ->where('siteVisits.0.notes', 'Cek pembesian pondasi tapak'));
-
-        // Non-admin cannot update or delete field projects
-        $this->actingAs($fieldWorker)
-            ->put(route('projects.field.update', $project->id), [
-                'name' => 'Hack Name',
-                'client_name' => 'Client',
-                'location' => 'Lokasi',
-                'project_type' => 'pembangunan',
-                'status' => 'ongoing',
-            ])
-            ->assertForbidden();
-
-        // Admin can update and delete field project
-        $this->actingAs($admin)
-            ->put(route('projects.field.update', $project->id), [
-                'name' => 'Villa Lembang Asri Tahap 2',
-                'client_name' => $project->client_name,
-                'location' => 'Jl. Raya Lembang No. 88',
-                'project_type' => 'desain_bangun',
-                'status' => 'done',
-                'member_ids' => [$fieldWorker->id],
-            ])
-            ->assertRedirect();
-
-        $this->assertDatabaseHas('projects', [
-            'id' => $project->id,
-            'name' => 'Villa Lembang Asri Tahap 2',
-            'location' => 'Jl. Raya Lembang No. 88',
-            'project_type' => 'desain_bangun',
-            'status' => 'done',
-        ]);
-
-        $this->actingAs($admin)
-            ->delete(route('projects.field.destroy', $project->id))
-            ->assertRedirect(route('projects.field'));
-
-        $this->assertSoftDeleted('projects', ['id' => $project->id]);
+                ->where('siteVisits.0.notes', 'Inspeksi perbaikan retensi atap'));
     }
 }

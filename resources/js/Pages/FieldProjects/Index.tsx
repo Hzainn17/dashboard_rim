@@ -7,12 +7,14 @@ import {
     Calendar,
     Camera,
     CheckCircle2,
+    ExternalLink,
     HardHat,
     ImagePlus,
     MapPin,
     Navigation,
     Plus,
     Search,
+    ShieldCheck,
     Users,
     X,
 } from 'lucide-react';
@@ -36,8 +38,10 @@ interface FieldProjectItem {
     client_name: string;
     client_phone?: string | null;
     location?: string | null;
+    maps_url?: string | null;
+    google_maps_url?: string | null;
     project_type: 'pembangunan' | 'desain_bangun';
-    status: 'planning' | 'ongoing' | 'review' | 'done' | 'on_hold' | string;
+    status: 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold' | string;
     cover_image_url?: string | null;
     description?: string | null;
     start_date?: string | null;
@@ -59,6 +63,7 @@ interface Props extends PageProps {
     projects: FieldProjectItem[];
     metrics: {
         active_projects: number;
+        retention_projects: number;
         today_site_visits: number;
         done_projects: number;
     };
@@ -82,8 +87,12 @@ const STATUS_META: Record<
         badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     },
     review: {
-        label: 'Inspeksi / BAST',
+        label: 'Inspeksi / BAST 1',
         badgeClass: 'bg-amber-50 text-amber-800 ring-amber-200',
+    },
+    retention: {
+        label: 'Masa Retensi',
+        badgeClass: 'bg-purple-50 text-purple-700 ring-purple-200',
     },
     done: {
         label: 'Selesai',
@@ -122,8 +131,9 @@ export default function FieldProjectsIndex({
         client_name: '',
         client_phone: '',
         location: '',
+        maps_url: '',
         project_type: 'pembangunan' as 'pembangunan' | 'desain_bangun',
-        status: 'ongoing' as 'planning' | 'ongoing' | 'done' | 'on_hold',
+        status: 'ongoing' as 'planning' | 'ongoing' | 'review' | 'retention' | 'done' | 'on_hold',
         start_date: new Date().toISOString().split('T')[0],
         due_date: '',
         description: '',
@@ -208,8 +218,8 @@ export default function FieldProjectsIndex({
                             Proyek Lapangan
                         </h1>
                         <p className="max-w-2xl text-xs text-slate-600 sm:text-sm">
-                            Daftar lokasi proyek konstruksi aktif agar tim pengawas & lapangan dapat melakukan{' '}
-                            <span className="font-medium text-slate-800">Absen Site Visit</span> serta mencatat dokumentasi kunjungan.
+                            Daftar lokasi proyek konstruksi & pemeliharaan (retensi) terpisah dari Perencanaan, agar tim lapangan dapat memilih lokasi saat{' '}
+                            <span className="font-medium text-slate-800">Absen Site Visit</span>.
                         </p>
                     </div>
 
@@ -235,21 +245,38 @@ export default function FieldProjectsIndex({
                 </div>
 
                 {/* Summary Metrics */}
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="flex items-center justify-between rounded-xl border bg-card p-4 shadow-2xs">
                         <div>
                             <p className="text-xs font-medium text-muted-foreground">
-                                Proyek Lapangan Aktif
+                                Proyek Berjalan
                             </p>
                             <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">
                                 {metrics.active_projects}
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                Siap dipilih untuk Site Visit
+                                Konstruksi fisik aktif
                             </p>
                         </div>
                         <div className="flex size-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
                             <HardHat className="size-5" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl border bg-card p-4 shadow-2xs">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">
+                                Masa Retensi
+                            </p>
+                            <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">
+                                {metrics.retention_projects}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                Masa pemeliharaan pasca-bangun
+                            </p>
+                        </div>
+                        <div className="flex size-10 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
+                            <ShieldCheck className="size-5" />
                         </div>
                     </div>
 
@@ -279,7 +306,7 @@ export default function FieldProjectsIndex({
                                 {metrics.done_projects}
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                Pembangunan telah serah terima
+                                Serah terima akhir tuntas
                             </p>
                         </div>
                         <div className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
@@ -289,8 +316,8 @@ export default function FieldProjectsIndex({
                 </div>
 
                 {/* Search & Status Filter */}
-                <div className="flex flex-col gap-3 rounded-xl border bg-card p-3.5 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
-                    <form onSubmit={handleSearchSubmit} className="relative flex-1 sm:max-w-sm">
+                <div className="flex flex-col gap-3 rounded-xl border bg-card p-3.5 shadow-2xs lg:flex-row lg:items-center lg:justify-between">
+                    <form onSubmit={handleSearchSubmit} className="relative flex-1 lg:max-w-sm">
                         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                         <input
                             type="text"
@@ -318,6 +345,8 @@ export default function FieldProjectsIndex({
                             { id: 'all', label: 'Semua' },
                             { id: 'ongoing', label: 'Sedang Berjalan' },
                             { id: 'planning', label: 'Persiapan' },
+                            { id: 'review', label: 'Inspeksi / BAST' },
+                            { id: 'retention', label: 'Masa Retensi' },
                             { id: 'on_hold', label: 'Ditunda' },
                             { id: 'done', label: 'Selesai' },
                         ].map((tab) => (
@@ -423,11 +452,32 @@ export default function FieldProjectsIndex({
                                     {/* Card Body */}
                                     <div className="flex flex-1 flex-col justify-between gap-3.5 p-4">
                                         <div className="space-y-2.5">
-                                            <div className="flex items-start gap-2 rounded-lg bg-amber-50/70 px-3 py-2 text-xs text-amber-950 ring-1 ring-amber-200/60">
-                                                <MapPin className="mt-0.5 size-3.5 shrink-0 text-amber-700" />
-                                                <span className="line-clamp-2 font-medium">
-                                                    {project.location || 'Lokasi belum diisi'}
-                                                </span>
+                                            <div className="flex items-start justify-between gap-2 rounded-xl bg-amber-50/70 px-3 py-2.5 text-xs text-amber-950 ring-1 ring-amber-200/60">
+                                                <div className="flex min-w-0 items-start gap-2">
+                                                    <MapPin className="mt-0.5 size-3.5 shrink-0 text-amber-700" />
+                                                    <span className="line-clamp-2 font-medium leading-snug">
+                                                        {project.location || 'Lokasi belum diisi'}
+                                                    </span>
+                                                </div>
+                                                {project.google_maps_url && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            window.open(
+                                                                project.google_maps_url || '',
+                                                                '_blank',
+                                                                'noopener,noreferrer',
+                                                            );
+                                                        }}
+                                                        title="Buka di Google Maps"
+                                                        className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-amber-800 shadow-2xs ring-1 ring-amber-300/80 transition hover:bg-amber-100"
+                                                    >
+                                                        Maps
+                                                        <ExternalLink className="size-2.5" />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {project.description && (
@@ -500,7 +550,7 @@ export default function FieldProjectsIndex({
                                         Tambah Proyek Lapangan
                                     </h2>
                                     <p className="text-xs text-muted-foreground">
-                                        Langsung aktif untuk pilihan Absen Site Visit tim lapangan
+                                        Khusus menu Proyek Lapangan & pilihan Absen Site Visit
                                     </p>
                                 </div>
                             </div>
@@ -518,8 +568,7 @@ export default function FieldProjectsIndex({
                             className="flex-1 space-y-4 overflow-y-auto px-5 py-4"
                         >
                             <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-900">
-                                Proyek dengan status <span className="font-semibold">Sedang Berjalan</span> atau{' '}
-                                <span className="font-semibold">Persiapan</span> otomatis muncul pada dropdown lokasi saat karyawan melakukan{' '}
+                                Proyek yang ditambahkan di sini <span className="font-semibold">tidak akan mencampuri daftar Proyek Perencanaan</span>, dan otomatis muncul di dropdown lokasi saat karyawan melakukan{' '}
                                 <span className="font-semibold">Check-in Site Visit</span>.
                             </div>
 
@@ -573,18 +622,37 @@ export default function FieldProjectsIndex({
 
                                 <div className="sm:col-span-2">
                                     <label className="mb-1 block text-xs font-semibold text-foreground">
-                                        Lokasi / Alamat Proyek <span className="text-rose-500">*</span>
+                                        Alamat / Lokasi Proyek <span className="text-rose-500">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         required
                                         value={form.data.location}
                                         onChange={(e) => form.setData('location', e.target.value)}
-                                        placeholder="Contoh: Jl. Dago Pakar No. 12, Bandung"
+                                        placeholder="Contoh: Bumi Adipura, Cluster Cempaka, Jl. Cempaka XI No. 21, Gedebage"
                                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                                     />
                                     {form.errors.location && (
                                         <p className="mt-1 text-xs text-rose-600">{form.errors.location}</p>
+                                    )}
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="mb-1 block text-xs font-semibold text-foreground">
+                                        Link Titik Google Maps (Opsional)
+                                    </label>
+                                    <input
+                                        type="url"
+                                        value={form.data.maps_url}
+                                        onChange={(e) => form.setData('maps_url', e.target.value)}
+                                        placeholder="https://maps.app.goo.gl/..."
+                                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                                    />
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Tempel link Share Google Maps agar tampil sebagai tombol peta rapi (bukan teks URL panjang).
+                                    </p>
+                                    {form.errors.maps_url && (
+                                        <p className="mt-1 text-xs text-rose-600">{form.errors.maps_url}</p>
                                     )}
                                 </div>
 
@@ -609,22 +677,30 @@ export default function FieldProjectsIndex({
 
                                 <div>
                                     <label className="mb-1 block text-xs font-semibold text-foreground">
-                                        Status Lapangan
+                                        Tahapan Status Lapangan
                                     </label>
                                     <select
                                         value={form.data.status}
                                         onChange={(e) =>
                                             form.setData(
                                                 'status',
-                                                e.target.value as 'planning' | 'ongoing' | 'done' | 'on_hold',
+                                                e.target.value as
+                                                    | 'planning'
+                                                    | 'ongoing'
+                                                    | 'review'
+                                                    | 'retention'
+                                                    | 'done'
+                                                    | 'on_hold',
                                             )
                                         }
                                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                                     >
-                                        <option value="ongoing">Sedang Berjalan</option>
                                         <option value="planning">Persiapan Lapangan</option>
+                                        <option value="ongoing">Sedang Berjalan (Konstruksi)</option>
+                                        <option value="review">Inspeksi / BAST 1</option>
+                                        <option value="retention">Masa Retensi (Pemeliharaan)</option>
                                         <option value="on_hold">Ditunda Sementara</option>
-                                        <option value="done">Selesai</option>
+                                        <option value="done">Selesai (Serah Terima Akhir)</option>
                                     </select>
                                 </div>
 
@@ -709,7 +785,7 @@ export default function FieldProjectsIndex({
                                         rows={2}
                                         value={form.data.description}
                                         onChange={(e) => form.setData('description', e.target.value)}
-                                        placeholder="Catatan lingkup pekerjaan fisik, patokan lokasi, dll..."
+                                        placeholder="Catatan lingkup pekerjaan fisik, patokan lokasi, masa garansi retensi, dll..."
                                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                                     />
                                 </div>
