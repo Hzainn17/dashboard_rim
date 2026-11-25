@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TimelineStage {
@@ -93,12 +93,17 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
     const todayIso = toLocalIso(new Date());
     const [startDateIso, setStartDateIso] = useState<string>(() => addDaysIso(todayIso, -3));
     const [picFilter, setPicFilter] = useState<string>('all');
+    const [projectFilter, setProjectFilter] = useState<string>('all');
+    const [stageFilter, setStageFilter] = useState<string>('all');
+    const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+    const [showAllRows, setShowAllRows] = useState<boolean>(false);
     const [selectedCell, setSelectedCell] = useState<{
         project: TimelineProject;
         iso: string;
         note: string;
     } | null>(null);
 
+    const INITIAL_VISIBLE_ROWS = 5;
     const DAYS_COUNT = 26;
 
     const dateColumns = useMemo(() => {
@@ -155,9 +160,24 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
     }, [projects]);
 
     const filteredProjects = useMemo(() => {
-        if (picFilter === 'all') return projects;
-        return projects.filter((p) => p.pic === picFilter);
-    }, [projects, picFilter]);
+        return projects.filter((p) => {
+            if (picFilter !== 'all' && p.pic !== picFilter) return false;
+            if (projectFilter !== 'all' && String(p.id) !== projectFilter) return false;
+            if (stageFilter !== 'all') {
+                const lower = (p.active_stage ?? '').toLowerCase();
+                if (stageFilter === 'review' && p.status !== 'review') return false;
+                if (stageFilter !== 'review' && !lower.includes(stageFilter)) return false;
+            }
+            return true;
+        });
+    }, [projects, picFilter, projectFilter, stageFilter]);
+
+    const visibleProjects = useMemo(() => {
+        if (showAllRows || projectFilter !== 'all') {
+            return filteredProjects;
+        }
+        return filteredProjects.slice(0, INITIAL_VISIBLE_ROWS);
+    }, [filteredProjects, showAllRows, projectFilter]);
 
     // Build date map per project
     const projectCellMaps = useMemo(() => {
@@ -252,145 +272,202 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
         >
             {/* Header Bar */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                    <CalendarDays className="size-4 text-[#46797b]" aria-hidden="true" />
+                <button
+                    type="button"
+                    onClick={() => setIsCollapsed((prev) => !prev)}
+                    className="flex items-center gap-2 text-left transition-opacity hover:opacity-85"
+                >
+                    <CalendarDays className="size-4 shrink-0 text-[#46797b]" aria-hidden="true" />
                     <div>
-                        <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
-                            Timeline Proyek Perencanaan
-                        </h2>
+                        <div className="flex items-center gap-1.5">
+                            <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
+                                Timeline Proyek Perencanaan
+                            </h2>
+                            <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                {isCollapsed ? (
+                                    <>
+                                        Buka <ChevronDown className="size-3" />
+                                    </>
+                                ) : (
+                                    <>
+                                        Tutup <ChevronUp className="size-3" />
+                                    </>
+                                )}
+                            </span>
+                        </div>
                         <p className="text-[11px] text-muted-foreground">
                             Rentang {rangeLabel} · {filteredProjects.length} proyek aktif
+                            {isCollapsed ? ' · Klik judul untuk menampilkan matriks jadwal' : ''}
                         </p>
                     </div>
-                </div>
+                </button>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {picOptions.length > 0 && (
+                {!isCollapsed && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {projects.length > 1 && (
+                            <select
+                                value={projectFilter}
+                                onChange={(e) => setProjectFilter(e.target.value)}
+                                className="h-7 max-w-[190px] truncate rounded-lg border bg-background px-2 text-xs font-medium text-foreground focus:outline-none"
+                                aria-label="Pilih Proyek"
+                            >
+                                <option value="all">Semua Proyek ({projects.length})</option>
+                                {projects.map((p) => (
+                                    <option key={p.id} value={String(p.id)}>
+                                        {p.name}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
                         <select
-                            value={picFilter}
-                            onChange={(e) => setPicFilter(e.target.value)}
+                            value={stageFilter}
+                            onChange={(e) => setStageFilter(e.target.value)}
                             className="h-7 rounded-lg border bg-background px-2 text-xs font-medium text-foreground focus:outline-none"
-                            aria-label="Filter PIC"
+                            aria-label="Filter Tahap"
                         >
-                            <option value="all">Semua PIC</option>
-                            {picOptions.map((pic) => (
-                                <option key={pic} value={pic}>
-                                    PIC: {pic}
-                                </option>
-                            ))}
+                            <option value="all">Semua Tahap</option>
+                            <option value="konseptual">Tahap Konseptual</option>
+                            <option value="pengembangan">Tahap Pengembangan</option>
+                            <option value="ded">Tahap DED</option>
+                            <option value="rab">Tahap RAB</option>
+                            <option value="review">Sedang Review</option>
                         </select>
-                    )}
 
-                    <div className="inline-flex items-center rounded-lg border bg-background">
-                        <button
-                            type="button"
-                            onClick={() => setStartDateIso((d) => addDaysIso(d, -7))}
-                            className="p-1.5 hover:bg-muted rounded-l-lg"
-                            title="Mundur 1 minggu"
-                        >
-                            <ChevronLeft className="size-3.5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setStartDateIso(addDaysIso(todayIso, -3))}
-                            className="border-x px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
-                        >
-                            Hari Ini
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setStartDateIso((d) => addDaysIso(d, 7))}
-                            className="p-1.5 hover:bg-muted rounded-r-lg"
-                            title="Maju 1 minggu"
-                        >
-                            <ChevronRight className="size-3.5" />
-                        </button>
+                        {picOptions.length > 0 && (
+                            <select
+                                value={picFilter}
+                                onChange={(e) => setPicFilter(e.target.value)}
+                                className="h-7 rounded-lg border bg-background px-2 text-xs font-medium text-foreground focus:outline-none"
+                                aria-label="Filter PIC"
+                            >
+                                <option value="all">Semua PIC</option>
+                                {picOptions.map((pic) => (
+                                    <option key={pic} value={pic}>
+                                        PIC: {pic}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
+                        <div className="inline-flex items-center rounded-lg border bg-background">
+                            <button
+                                type="button"
+                                onClick={() => setStartDateIso((d) => addDaysIso(d, -7))}
+                                className="p-1.5 hover:bg-muted rounded-l-lg"
+                                title="Mundur 1 minggu"
+                            >
+                                <ChevronLeft className="size-3.5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setStartDateIso(addDaysIso(todayIso, -3))}
+                                className="border-x px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
+                            >
+                                Hari Ini
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setStartDateIso((d) => addDaysIso(d, 7))}
+                                className="p-1.5 hover:bg-muted rounded-r-lg"
+                                title="Maju 1 minggu"
+                            >
+                                <ChevronRight className="size-3.5" />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Matrix Table */}
-            <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full border-collapse text-[11px]">
-                    <thead>
-                        {/* Row 1: Sticky Left Headers + Month/Year Groups */}
-                        <tr className="border-b bg-muted/60 text-foreground">
-                            <th
-                                rowSpan={2}
-                                className="sticky left-0 z-20 w-8 border-r bg-muted/95 px-2 py-1.5 text-center font-bold align-middle"
-                            >
-                                NO
-                            </th>
-                            <th
-                                rowSpan={2}
-                                className="sticky left-8 z-20 min-w-[165px] border-r bg-muted/95 px-2.5 py-1.5 text-left font-bold align-middle"
-                            >
-                                NAMA PROYEK
-                            </th>
-                            <th
-                                rowSpan={2}
-                                className="border-r px-2 py-1.5 text-left font-bold whitespace-nowrap align-middle"
-                            >
-                                PIC
-                            </th>
-                            <th
-                                rowSpan={2}
-                                className="border-r px-2 py-1.5 text-center font-bold whitespace-nowrap align-middle"
-                            >
-                                STATUS
-                            </th>
-                            {monthGroups.map((grp, idx) => (
-                                <th
-                                    key={`${grp.label}-${idx}`}
-                                    colSpan={grp.count}
-                                    className="border-r bg-[#46797b]/10 px-2 py-1 text-center text-[10.5px] font-bold uppercase tracking-wider text-[#46797b] last:border-r-0"
-                                >
-                                    {grp.label}
-                                </th>
-                            ))}
-                        </tr>
-
-                        {/* Row 2: Day Number & Day Name */}
-                        <tr className="border-b bg-muted/40 text-foreground">
-                            {dateColumns.map((col) => (
-                                <th
-                                    key={col.iso}
-                                    className={cn(
-                                        'min-w-[28px] border-r px-0.5 py-1 text-center font-bold tabular-nums last:border-r-0',
-                                        col.isToday
-                                            ? 'bg-emerald-500 text-white'
-                                            : col.isWeekend
-                                            ? 'bg-zinc-300/80 text-zinc-700'
-                                            : 'text-foreground'
-                                    )}
-                                    title={col.iso}
-                                >
-                                    <div className="leading-none">{col.dayNum}</div>
-                                    <div
-                                        className={cn(
-                                            'mt-0.5 text-[8.5px] font-semibold leading-none',
-                                            col.isToday ? 'text-emerald-50' : 'text-muted-foreground'
-                                        )}
+            {!isCollapsed && (
+                <>
+                    {/* Matrix Table (bounded vertical height with sticky headers when expanded) */}
+                    <div
+                        className={cn(
+                            'overflow-x-auto rounded-lg border border-border',
+                            showAllRows && filteredProjects.length > INITIAL_VISIBLE_ROWS && 'max-h-[380px] overflow-y-auto',
+                        )}
+                    >
+                        <table className="w-full border-collapse text-[11px]">
+                            <thead className="sticky top-0 z-30 bg-card shadow-2xs">
+                                {/* Row 1: Sticky Left Headers + Month/Year Groups */}
+                                <tr className="border-b bg-muted text-foreground">
+                                    <th
+                                        rowSpan={2}
+                                        className="sticky left-0 z-40 w-8 border-r bg-muted px-2 py-1.5 text-center font-bold align-middle"
                                     >
-                                        {col.dayName}
-                                    </div>
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
+                                        NO
+                                    </th>
+                                    <th
+                                        rowSpan={2}
+                                        className="sticky left-8 z-40 min-w-[165px] border-r bg-muted px-2.5 py-1.5 text-left font-bold align-middle"
+                                    >
+                                        NAMA PROYEK
+                                    </th>
+                                    <th
+                                        rowSpan={2}
+                                        className="border-r bg-muted px-2 py-1.5 text-left font-bold whitespace-nowrap align-middle"
+                                    >
+                                        PIC
+                                    </th>
+                                    <th
+                                        rowSpan={2}
+                                        className="border-r bg-muted px-2 py-1.5 text-center font-bold whitespace-nowrap align-middle"
+                                    >
+                                        STATUS
+                                    </th>
+                                    {monthGroups.map((grp, idx) => (
+                                        <th
+                                            key={`${grp.label}-${idx}`}
+                                            colSpan={grp.count}
+                                            className="border-r bg-[#e8f0f0] px-2 py-1 text-center text-[10.5px] font-bold uppercase tracking-wider text-[#46797b] last:border-r-0"
+                                        >
+                                            {grp.label}
+                                        </th>
+                                    ))}
+                                </tr>
 
-                    <tbody className="divide-y">
-                        {filteredProjects.length === 0 ? (
-                            <tr>
-                                <td
-                                    colSpan={4 + dateColumns.length}
-                                    className="px-4 py-6 text-center text-xs text-muted-foreground"
-                                >
-                                    Belum ada proyek yang sedang berjalan.
-                                </td>
-                            </tr>
-                        ) : (
-                            filteredProjects.map((project, idx) => {
+                                {/* Row 2: Day Number & Day Name */}
+                                <tr className="border-b bg-muted text-foreground">
+                                    {dateColumns.map((col) => (
+                                        <th
+                                            key={col.iso}
+                                            className={cn(
+                                                'min-w-[28px] border-r px-0.5 py-1 text-center font-bold tabular-nums last:border-r-0',
+                                                col.isToday
+                                                    ? 'bg-emerald-500 text-white'
+                                                    : col.isWeekend
+                                                    ? 'bg-zinc-300 text-zinc-700'
+                                                    : 'bg-muted text-foreground',
+                                            )}
+                                            title={col.iso}
+                                        >
+                                            <div className="leading-none">{col.dayNum}</div>
+                                            <div
+                                                className={cn(
+                                                    'mt-0.5 text-[8.5px] font-semibold leading-none',
+                                                    col.isToday ? 'text-emerald-50' : 'text-muted-foreground',
+                                                )}
+                                            >
+                                                {col.dayName}
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+
+                            <tbody className="divide-y">
+                                {visibleProjects.length === 0 ? (
+                                    <tr>
+                                        <td
+                                            colSpan={4 + dateColumns.length}
+                                            className="px-4 py-6 text-center text-xs text-muted-foreground"
+                                        >
+                                            Belum ada proyek yang sesuai filter.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    visibleProjects.map((project, idx) => {
                                 const cellMap = projectCellMaps[project.id] || {};
                                 return (
                                     <tr key={project.id} className="group hover:bg-muted/20">
@@ -479,61 +556,89 @@ export function ProjectsTimelineCalendar({ projects }: { projects: TimelineProje
                                 );
                             })
                         )}
-                    </tbody>
-                </table>
-            </div>
-
-            {selectedCell && (
-                <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <span className="font-bold text-foreground">{selectedCell.project.name}</span>
-                        <span className="text-muted-foreground"> ({selectedCell.project.client_name})</span>
-                        <span className="mx-1.5 text-muted-foreground">·</span>
-                        <span className="font-medium text-[#46797b]">
-                            {new Date(selectedCell.iso + 'T00:00:00Z').toLocaleDateString('id-ID', {
-                                weekday: 'short',
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                timeZone: 'UTC',
-                            })}
-                        </span>
-                        <span className="mx-1.5 text-muted-foreground">·</span>
-                        <span className="text-foreground">{selectedCell.note}</span>
-                    </div>
-                    <Link
-                        href={route('projects.show', selectedCell.project.id)}
-                        className="shrink-0 font-semibold text-[#46797b] hover:underline"
-                    >
-                        Buka Detail Proyek →
-                    </Link>
+                        </tbody>
+                    </table>
                 </div>
-            )}
 
-            {/* Compact Color Legend matching Studio Spreadsheet */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10.5px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-rose-500" /> Deadline (DL)
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-amber-400" /> Batas Respon (RP)
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-emerald-500" /> Hari Ini
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-emerald-200 border border-emerald-300" /> PIC Sedang Mengerjakan
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-sky-200 border border-sky-300" /> Bola di Owner
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-purple-200 border border-purple-300" /> Review
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="h-3 w-5 rounded-xs bg-zinc-200 border border-zinc-300" /> Akhir Pekan
-                </span>
-            </div>
+                {projectFilter === 'all' && filteredProjects.length > INITIAL_VISIBLE_ROWS && (
+                    <div className="flex items-center justify-between rounded-lg border border-dashed bg-muted/25 px-3 py-1.5 text-xs">
+                        <span className="text-muted-foreground">
+                            {showAllRows
+                                ? `Menampilkan seluruh ${filteredProjects.length} proyek (scroll tabel ke bawah)`
+                                : `Menampilkan ${INITIAL_VISIBLE_ROWS} dari ${filteredProjects.length} proyek aktif`}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setShowAllRows((prev) => !prev)}
+                            className="inline-flex items-center gap-1 font-semibold text-[#46797b] hover:underline"
+                        >
+                            {showAllRows ? (
+                                <>
+                                    Ringkas jadi {INITIAL_VISIBLE_ROWS} proyek <ChevronUp className="size-3.5" />
+                                </>
+                            ) : (
+                                <>
+                                    Lihat {filteredProjects.length - INITIAL_VISIBLE_ROWS} proyek lainnya{' '}
+                                    <ChevronDown className="size-3.5" />
+                                </>
+                            )}
+                        </button>
+                    </div>
+                )}
+
+                {selectedCell && (
+                    <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <span className="font-bold text-foreground">{selectedCell.project.name}</span>
+                            <span className="text-muted-foreground"> ({selectedCell.project.client_name})</span>
+                            <span className="mx-1.5 text-muted-foreground">·</span>
+                            <span className="font-medium text-[#46797b]">
+                                {new Date(selectedCell.iso + 'T00:00:00Z').toLocaleDateString('id-ID', {
+                                    weekday: 'short',
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    timeZone: 'UTC',
+                                })}
+                            </span>
+                            <span className="mx-1.5 text-muted-foreground">·</span>
+                            <span className="text-foreground">{selectedCell.note}</span>
+                        </div>
+                        <Link
+                            href={route('projects.show', selectedCell.project.id)}
+                            className="shrink-0 font-semibold text-[#46797b] hover:underline"
+                        >
+                            Buka Detail Proyek →
+                        </Link>
+                    </div>
+                )}
+
+                {/* Compact Color Legend matching Studio Spreadsheet */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10.5px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-rose-500" /> Deadline (DL)
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-amber-400" /> Batas Respon (RP)
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-emerald-500" /> Hari Ini
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-emerald-200 border border-emerald-300" /> PIC Sedang Mengerjakan
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-sky-200 border border-sky-300" /> Bola di Owner
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-purple-200 border border-purple-300" /> Review
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="h-3 w-5 rounded-xs bg-zinc-200 border border-zinc-300" /> Akhir Pekan
+                    </span>
+                </div>
+            </>
+            )}
         </section>
     );
 }

@@ -161,8 +161,9 @@ export function DailyFocusWidget({ role }: { role: Role }) {
                         .
                     </div>
                 ) : (
-                    <ul className="divide-y rounded-lg border bg-background/50">
-                        {tasks.slice(0, 6).map((task) => {
+                    <>
+                        <ul className="max-h-[260px] divide-y overflow-y-auto rounded-lg border bg-background/50">
+                            {tasks.slice(0, 6).map((task) => {
                             const isDone = task.status === 'done';
                             const isReview = task.status === 'review';
                             const isCarried = task.status === 'carried_over';
@@ -246,8 +247,17 @@ export function DailyFocusWidget({ role }: { role: Role }) {
                                     </button>
                                 </li>
                             );
-                        })}
-                    </ul>
+                            })}
+                        </ul>
+                        {tasks.length > 6 && (
+                            <Link
+                                href={route('daily-tasks.index')}
+                                className="text-center text-xs font-medium text-primary hover:underline"
+                            >
+                                Lihat {tasks.length - 6} to-do lainnya di Kerja Tim →
+                            </Link>
+                        )}
+                    </>
                 )}
             </div>
         </section>

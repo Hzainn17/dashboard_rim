@@ -5,6 +5,8 @@ import {
     CalendarDays,
     Check,
     CheckCircle2,
+    ChevronDown,
+    ChevronUp,
     Circle,
     Clock,
     Copy,
@@ -116,6 +118,8 @@ export default function DailyTasksIndex({
     const [activeTab, setActiveTab] = useState<'team' | 'mine'>(canManageTeam ? 'team' : 'mine');
     const [teamFilter, setTeamFilter] = useState<'all' | 'review' | 'empty'>('all');
     const [copiedWa, setCopiedWa] = useState(false);
+    const [expandedCards, setExpandedCards] = useState<Record<number, boolean>>({});
+    const [myProjectFilter, setMyProjectFilter] = useState<string>('all');
 
     // Quick-add state (WA-speed)
     const [newProjectId, setNewProjectId] = useState<string>('');
@@ -599,130 +603,198 @@ export default function DailyTasksIndex({
                                                     </span>
                                                 </div>
 
-                                                {/* Member Task List */}
+                                                {/* Member Task List (Compact 3 items default + internal scroll when expanded) */}
                                                 <div className="flex flex-1 flex-col gap-2 p-4">
                                                     {member.tasks.length === 0 ? (
                                                         <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
                                                             Belum mengisi target kerja hari ini.
                                                         </div>
                                                     ) : (
-                                                        <ul className="flex flex-col gap-2">
-                                                            {member.tasks.map((task) => {
-                                                                const st =
-                                                                    statusConfig[task.status] ??
-                                                                    statusConfig.in_progress;
-                                                                return (
-                                                                    <li
-                                                                        key={task.id}
-                                                                        className="rounded-lg border bg-background/60 p-2.5 text-xs"
+                                                        (() => {
+                                                            const COLLAPSED_LIMIT = 3;
+                                                            const isExpanded = !!expandedCards[member.id];
+                                                            const statusPriority: Record<string, number> = {
+                                                                review: 0,
+                                                                in_progress: 1,
+                                                                carried_over: 2,
+                                                                done: 3,
+                                                            };
+                                                            const sortedTasks = [...member.tasks].sort(
+                                                                (a, b) =>
+                                                                    (statusPriority[a.status] ?? 9) -
+                                                                    (statusPriority[b.status] ?? 9),
+                                                            );
+                                                            const visibleTasks = isExpanded
+                                                                ? sortedTasks
+                                                                : sortedTasks.slice(0, COLLAPSED_LIMIT);
+                                                            const hiddenCount = Math.max(
+                                                                0,
+                                                                sortedTasks.length - COLLAPSED_LIMIT,
+                                                            );
+
+                                                            return (
+                                                                <>
+                                                                    <ul
+                                                                        className={cn(
+                                                                            'flex flex-col gap-2',
+                                                                            isExpanded &&
+                                                                                'max-h-[380px] overflow-y-auto pr-1',
+                                                                        )}
                                                                     >
-                                                                        <div className="flex items-start justify-between gap-2">
-                                                                            <p
-                                                                                className={cn(
-                                                                                    'font-medium leading-snug',
-                                                                                    task.status === 'done' &&
-                                                                                        'text-muted-foreground line-through',
-                                                                                )}
-                                                                            >
-                                                                                {task.title}
-                                                                            </p>
-                                                                            <span
-                                                                                className={cn(
-                                                                                    'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                                                                                    task.status === 'review' &&
-                                                                                        task.review_target === 'owner'
-                                                                                        ? 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200'
-                                                                                        : st.badge,
-                                                                                )}
-                                                                            >
-                                                                                {task.status === 'review'
-                                                                                    ? task.review_target === 'owner'
-                                                                                        ? 'Review Owner'
-                                                                                        : 'Review PM'
-                                                                                    : st.label}
-                                                                            </span>
-                                                                        </div>
+                                                                        {visibleTasks.map((task) => {
+                                                                            const st =
+                                                                                statusConfig[task.status] ??
+                                                                                statusConfig.in_progress;
+                                                                            return (
+                                                                                <li
+                                                                                    key={task.id}
+                                                                                    className="rounded-lg border bg-background/60 p-2.5 text-xs"
+                                                                                >
+                                                                                    <div className="flex items-start justify-between gap-2">
+                                                                                        <p
+                                                                                            className={cn(
+                                                                                                'font-medium leading-snug',
+                                                                                                task.status === 'done' &&
+                                                                                                    'text-muted-foreground line-through',
+                                                                                            )}
+                                                                                        >
+                                                                                            {task.title}
+                                                                                        </p>
+                                                                                        <span
+                                                                                            className={cn(
+                                                                                                'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                                                                                                task.status === 'review' &&
+                                                                                                    task.review_target ===
+                                                                                                        'owner'
+                                                                                                    ? 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200'
+                                                                                                    : st.badge,
+                                                                                            )}
+                                                                                        >
+                                                                                            {task.status === 'review'
+                                                                                                ? task.review_target ===
+                                                                                                  'owner'
+                                                                                                    ? 'Review Owner'
+                                                                                                    : 'Review PM'
+                                                                                                : st.label}
+                                                                                        </span>
+                                                                                    </div>
 
-                                                                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                                                                            {task.project_name ? (
-                                                                                <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px font-medium text-primary">
-                                                                                    <FolderKanban className="size-2.5" />
-                                                                                    {task.project_name}
-                                                                                </span>
+                                                                                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                                                                        {task.project_name ? (
+                                                                                            <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px font-medium text-primary">
+                                                                                                <FolderKanban className="size-2.5" />
+                                                                                                {task.project_name}
+                                                                                            </span>
+                                                                                        ) : (
+                                                                                            <span className="rounded bg-muted px-1.5 py-px">
+                                                                                                Umum
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {task.project_task_title && (
+                                                                                            <span className="rounded bg-accent px-1.5 py-px text-accent-foreground">
+                                                                                                Kanban:{' '}
+                                                                                                {task.project_task_title}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {task.is_carried_over && (
+                                                                                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-px text-amber-800">
+                                                                                                <Repeat className="size-2.5" />
+                                                                                                Lanjutan
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+
+                                                                                    {task.notes && (
+                                                                                        <p
+                                                                                            title={task.notes}
+                                                                                            className={cn(
+                                                                                                'mt-1.5 rounded bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground italic',
+                                                                                                !isExpanded && 'line-clamp-2',
+                                                                                            )}
+                                                                                        >
+                                                                                            “{task.notes}”
+                                                                                        </p>
+                                                                                    )}
+
+                                                                                    {canManageTeam &&
+                                                                                        task.status === 'review' &&
+                                                                                        (task.review_target !== 'owner' ||
+                                                                                            isSuperAdmin) && (
+                                                                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        handleUpdateStatus(
+                                                                                                            task,
+                                                                                                            'done',
+                                                                                                            task.project_task_id
+                                                                                                                ? 'done'
+                                                                                                                : undefined,
+                                                                                                        )
+                                                                                                    }
+                                                                                                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                                                                                                >
+                                                                                                    <Check className="size-3" />
+                                                                                                    ACC Selesai
+                                                                                                    {task.project_task_id
+                                                                                                        ? ' (+ Kanban)'
+                                                                                                        : ''}
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        handleUpdateStatus(
+                                                                                                            task,
+                                                                                                            'in_progress',
+                                                                                                        )
+                                                                                                    }
+                                                                                                    className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
+                                                                                                >
+                                                                                                    Revisi Lagi
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    {canManageTeam &&
+                                                                                        task.status === 'review' &&
+                                                                                        task.review_target === 'owner' &&
+                                                                                        !isSuperAdmin && (
+                                                                                            <p className="mt-2 border-t pt-1.5 text-[10px] font-medium text-indigo-700">
+                                                                                                Menunggu ACC langsung dari Owner
+                                                                                                (Super Admin)
+                                                                                            </p>
+                                                                                        )}
+                                                                                </li>
+                                                                            );
+                                                                        })}
+                                                                    </ul>
+
+                                                                    {sortedTasks.length > COLLAPSED_LIMIT && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setExpandedCards((prev) => ({
+                                                                                    ...prev,
+                                                                                    [member.id]: !prev[member.id],
+                                                                                }))
+                                                                            }
+                                                                            className="mt-0.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/30 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-accent/60"
+                                                                        >
+                                                                            {isExpanded ? (
+                                                                                <>
+                                                                                    <ChevronUp className="size-3.5" />
+                                                                                    Ringkas tampilan (tampilkan 3)
+                                                                                </>
                                                                             ) : (
-                                                                                <span className="rounded bg-muted px-1.5 py-px">
-                                                                                    Umum
-                                                                                </span>
+                                                                                <>
+                                                                                    <ChevronDown className="size-3.5" />
+                                                                                    Lihat {hiddenCount} tugas lainnya
+                                                                                </>
                                                                             )}
-                                                                            {task.project_task_title && (
-                                                                                <span className="rounded bg-accent px-1.5 py-px text-accent-foreground">
-                                                                                    Kanban: {task.project_task_title}
-                                                                                </span>
-                                                                            )}
-                                                                            {task.is_carried_over && (
-                                                                                <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-px text-amber-800">
-                                                                                    <Repeat className="size-2.5" />
-                                                                                    Lanjutan
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-
-                                                                        {task.notes && (
-                                                                            <p className="mt-1.5 rounded bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground italic">
-                                                                                “{task.notes}”
-                                                                            </p>
-                                                                        )}
-
-                                                                        {canManageTeam &&
-                                                                            task.status === 'review' &&
-                                                                            (task.review_target !== 'owner' ||
-                                                                                isSuperAdmin) && (
-                                                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2">
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() =>
-                                                                                        handleUpdateStatus(
-                                                                                            task,
-                                                                                            'done',
-                                                                                            task.project_task_id
-                                                                                                ? 'done'
-                                                                                                : undefined,
-                                                                                        )
-                                                                                    }
-                                                                                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                                                                                >
-                                                                                    <Check className="size-3" />
-                                                                                    ACC Selesai
-                                                                                    {task.project_task_id
-                                                                                        ? ' (+ Kanban)'
-                                                                                        : ''}
-                                                                                </button>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() =>
-                                                                                        handleUpdateStatus(
-                                                                                            task,
-                                                                                            'in_progress',
-                                                                                        )
-                                                                                    }
-                                                                                    className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
-                                                                                >
-                                                                                    Revisi Lagi
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-                                                                        {canManageTeam &&
-                                                                            task.status === 'review' &&
-                                                                            task.review_target === 'owner' &&
-                                                                            !isSuperAdmin && (
-                                                                                <p className="mt-2 border-t pt-1.5 text-[10px] font-medium text-indigo-700">
-                                                                                    Menunggu ACC langsung dari Owner (Super Admin)
-                                                                                </p>
-                                                                            )}
-                                                                    </li>
-                                                                );
-                                                            })}
-                                                        </ul>
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })()
                                                     )}
                                                 </div>
 
@@ -876,7 +948,7 @@ export default function DailyTasksIndex({
 
                             {/* My Tasks List */}
                             <div className="rounded-xl border bg-card">
-                                <div className="flex items-center justify-between border-b px-5 py-3.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3.5">
                                     <div>
                                         <h2 className="text-sm font-semibold">
                                             Daftar To-Do Saya ({myTasks.length})
@@ -887,6 +959,28 @@ export default function DailyTasksIndex({
                                             {myTasks.filter((t) => t.status === 'review').length} menunggu review
                                         </p>
                                     </div>
+                                    {myTasks.length > 3 && (
+                                        <select
+                                            value={myProjectFilter}
+                                            onChange={(e) => setMyProjectFilter(e.target.value)}
+                                            aria-label="Filter proyek to-do saya"
+                                            className="h-8 rounded-lg border bg-background px-2.5 text-xs font-medium outline-none focus-visible:border-ring"
+                                        >
+                                            <option value="all">Semua Proyek ({myTasks.length})</option>
+                                            <option value="general">Umum / Internal</option>
+                                            {Array.from(
+                                                new Map(
+                                                    myTasks
+                                                        .filter((t) => t.project_id && t.project_name)
+                                                        .map((t) => [String(t.project_id), t.project_name!]),
+                                                ).entries(),
+                                            ).map(([pid, pname]) => (
+                                                <option key={pid} value={pid}>
+                                                    {pname}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
 
                                 {myTasks.length === 0 ? (
@@ -894,8 +988,14 @@ export default function DailyTasksIndex({
                                         Belum ada to-do yang dicatat pada tanggal {selectedDateFormatted}.
                                     </div>
                                 ) : (
-                                    <ul className="divide-y">
-                                        {myTasks.map((task) => {
+                                    <ul className="max-h-[520px] divide-y overflow-y-auto">
+                                        {myTasks
+                                            .filter((task) => {
+                                                if (myProjectFilter === 'all') return true;
+                                                if (myProjectFilter === 'general') return !task.project_id;
+                                                return String(task.project_id) === myProjectFilter;
+                                            })
+                                            .map((task) => {
                                             const st = statusConfig[task.status] ?? statusConfig.in_progress;
                                             const isDone = task.status === 'done';
                                             return (
