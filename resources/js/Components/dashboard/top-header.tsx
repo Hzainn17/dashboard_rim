@@ -20,7 +20,7 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isMac, setIsMac] = useState(true);
     const [items, setItems] = useState(serverNotifications);
-    const { now, checkedInAt, checkedOutAt, checkIn } = useAttendance();
+    const { now, checkedInAt, checkedOutAt, secondsUntilCheckInOpen } = useAttendance();
 
     useEffect(() => {
         setItems(serverNotifications);
@@ -29,6 +29,7 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
     const unread = items.filter((n) => n.unread).length;
     const isWorking = !!checkedInAt && !checkedOutAt;
     const hasCheckedOut = !!checkedOutAt;
+    const isBeforeEightAm = !isWorking && !hasCheckedOut && secondsUntilCheckInOpen > 0;
 
     const handleMarkAllRead = () => {
         setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -141,10 +142,18 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
                             ? 'Presensi Selesai'
                             : isWorking
                               ? 'Sudah Check-in'
-                              : 'Check-in Cepat'}
+                              : isBeforeEightAm
+                                ? 'Buka 08:00 WIB'
+                                : 'Check-in Cepat'}
                     </span>
                     <span className="sm:hidden">
-                        {hasCheckedOut ? 'Selesai' : isWorking ? 'Hadir' : 'Check-in'}
+                        {hasCheckedOut
+                            ? 'Selesai'
+                            : isWorking
+                              ? 'Hadir'
+                              : isBeforeEightAm
+                                ? '08:00'
+                                : 'Check-in'}
                     </span>
                 </button>
 

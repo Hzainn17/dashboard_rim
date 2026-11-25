@@ -186,6 +186,7 @@ export type PageProps<
             end_date: string;
         } | null;
         pendingWfhToday?: boolean;
+        secondsUntilCheckInOpen?: number;
         workType?: 'kantor' | 'lapangan';
         targetWorkHours?: number;
         targetWorkMinutes?: number;

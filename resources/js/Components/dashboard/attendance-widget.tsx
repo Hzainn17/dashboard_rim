@@ -75,6 +75,7 @@ export function AttendanceWidget() {
         checkedOutAt,
         elapsedMs,
         cooldownRemainingSeconds,
+        secondsUntilCheckInOpen,
         checkIn,
         checkOut,
         siteProject,
@@ -107,12 +108,14 @@ export function AttendanceWidget() {
     const progress = Math.min(100, (elapsed / TARGET_MS) * 100);
     const overtime = Math.max(0, elapsed - TARGET_MS);
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
+    const isBeforeEightAm = secondsUntilCheckInOpen > 0;
     const siteReady =
-        mode === 'wfh'
+        !isBeforeEightAm &&
+        (mode === 'wfh'
             ? canUseWfh
             : mode === 'office'
               ? gps.status === 'ready' && gps.isWithinRadius
-              : !!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url);
+              : !!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url));
 
     const isOfficeOutOfRadius =
         isWorking && mode === 'office' && gps.status === 'ready' && !gps.isWithinRadius;
@@ -555,17 +558,19 @@ export function AttendanceWidget() {
                             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-xs transition-colors outline-none hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <LogIn className="size-4" aria-hidden="true" />
-                            {mode === 'wfh'
-                                ? 'Check-in WFH'
-                                : mode === 'office'
-                                  ? gps.status === 'loading'
-                                      ? 'Mendeteksi GPS…'
-                                      : gps.status !== 'ready'
-                                      ? 'Aktifkan Izin Lokasi (GPS)'
-                                      : !gps.isWithinRadius
-                                      ? `Di Luar Radius (${gps.distanceMeters}m)`
-                                      : 'Check-in Kantor'
-                                  : 'Check-in Site Visit'}
+                            {isBeforeEightAm
+                                ? `Check-in Dibuka 08:00 WIB (${formatCooldown(secondsUntilCheckInOpen)})`
+                                : mode === 'wfh'
+                                  ? 'Check-in WFH'
+                                  : mode === 'office'
+                                    ? gps.status === 'loading'
+                                        ? 'Mendeteksi GPS…'
+                                        : gps.status !== 'ready'
+                                        ? 'Aktifkan Izin Lokasi (GPS)'
+                                        : !gps.isWithinRadius
+                                        ? `Di Luar Radius (${gps.distanceMeters}m)`
+                                        : 'Check-in Kantor'
+                                    : 'Check-in Site Visit'}
                         </button>
                     )}
                 </div>

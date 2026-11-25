@@ -274,6 +274,7 @@ export default function AttendanceIndex({
         todayAttendance?.cooldown_remaining_seconds ?? 3600,
     );
     const [overtimeSeconds, setOvertimeSeconds] = useState<number>(activeOvertime?.elapsed_seconds ?? 0);
+    const [secondsUntilOpen, setSecondsUntilOpen] = useState<number>(auth?.secondsUntilCheckInOpen ?? 0);
 
     // Sync workSeconds & cooldownSeconds when server props change (e.g. after Check-in / Check-out)
     useEffect(() => {
@@ -288,12 +289,16 @@ export default function AttendanceIndex({
     ]);
 
     useEffect(() => {
+        setSecondsUntilOpen(auth?.secondsUntilCheckInOpen ?? 0);
+    }, [auth?.secondsUntilCheckInOpen]);
+
+    useEffect(() => {
         setOvertimeSeconds(activeOvertime?.elapsed_seconds ?? 0);
     }, [activeOvertime?.id, activeOvertime?.start_at, activeOvertime?.elapsed_seconds]);
 
-    // Tick every second while working, in post-checkout cooldown, or while overtime is active
+    // Tick every second while working, in post-checkout cooldown, before 08:00 WIB, or while overtime is active
     useEffect(() => {
-        if (!isWorking && !hasCheckedOut && !activeOvertime) return;
+        if (!isWorking && !hasCheckedOut && !activeOvertime && secondsUntilOpen <= 0) return;
         const id = window.setInterval(() => {
             if (isWorking) {
                 setWorkSeconds((prev) => prev + 1);
@@ -304,9 +309,10 @@ export default function AttendanceIndex({
             if (activeOvertime) {
                 setOvertimeSeconds((prev) => prev + 1);
             }
+            setSecondsUntilOpen((prev) => (prev > 0 ? prev - 1 : 0));
         }, 1000);
         return () => window.clearInterval(id);
-    }, [isWorking, hasCheckedOut, activeOvertime]);
+    }, [isWorking, hasCheckedOut, activeOvertime, secondsUntilOpen > 0]);
 
     const isSiteVisitToday = todayAttendance?.mode === 'site_visit';
     const isWfhToday = todayAttendance?.mode === 'wfh';
@@ -372,12 +378,15 @@ export default function AttendanceIndex({
         task_description: '',
     });
 
+    const isBeforeEightAm = secondsUntilOpen > 0;
+
     const canCheckInSiteVisit =
-        mode === 'wfh'
+        !isBeforeEightAm &&
+        (mode === 'wfh'
             ? canUseWfh
             : mode === 'office'
               ? gps.status === 'ready' && gps.isWithinRadius
-              : !!siteProjectId && !!photoFile;
+              : !!siteProjectId && !!photoFile);
 
     const handleCheckIn = () => {
         if (!canCheckInSiteVisit) {
@@ -1347,21 +1356,23 @@ export default function AttendanceIndex({
                                                     className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     <LogIn className="size-4" />
-                                                    {mode === 'wfh'
-                                                        ? 'Check-in WFH Sekarang'
-                                                        : mode === 'office'
-                                                          ? gps.status === 'loading'
-                                                              ? 'Mendeteksi Lokasi GPS…'
-                                                              : gps.status !== 'ready'
-                                                              ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
-                                                              : !gps.isWithinRadius
-                                                              ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
-                                                              : 'Check-in Kantor Sekarang'
-                                                          : !siteProjectId
-                                                          ? 'Pilih Proyek Terlebih Dahulu'
-                                                          : !photoFile
-                                                          ? 'Wajib Ambil / Lampirkan Foto Lokasi'
-                                                          : 'Kirim Check-in Site Visit'}
+                                                    {isBeforeEightAm
+                                                        ? `Check-in Dibuka Pukul 08:00 WIB (${formatSecondsLive(secondsUntilOpen)} lagi)`
+                                                        : mode === 'wfh'
+                                                          ? 'Check-in WFH Sekarang'
+                                                          : mode === 'office'
+                                                            ? gps.status === 'loading'
+                                                                ? 'Mendeteksi Lokasi GPS…'
+                                                                : gps.status !== 'ready'
+                                                                ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
+                                                                : !gps.isWithinRadius
+                                                                ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
+                                                                : 'Check-in Kantor Sekarang'
+                                                            : !siteProjectId
+                                                            ? 'Pilih Proyek Terlebih Dahulu'
+                                                            : !photoFile
+                                                            ? 'Wajib Ambil / Lampirkan Foto Lokasi'
+                                                            : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : isBeforeTargetCheckout ? (
                                                 <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-accent/45 px-4 py-2.5 text-sm">

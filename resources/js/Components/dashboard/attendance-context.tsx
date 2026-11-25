@@ -12,6 +12,7 @@ type AttendanceState = {
     checkedOutAt: Date | null;
     elapsedMs: number;
     cooldownRemainingSeconds: number;
+    secondsUntilCheckInOpen: number;
     skipCooldown: () => void;
     siteProject: string | null;
     setSiteProject: (id: string | null) => void;
@@ -59,6 +60,9 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState<number>(
         serverAtt?.cooldown_remaining_seconds ?? 3600,
     );
+    const [secondsUntilCheckInOpen, setSecondsUntilCheckInOpen] = useState<number>(
+        page.props.auth?.secondsUntilCheckInOpen ?? 0,
+    );
     const [siteProject, setSiteProject] = useState<string | null>(
         serverAtt?.site_visit_project_id ? String(serverAtt.site_visit_project_id) : null,
     );
@@ -93,6 +97,10 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         hasApprovedWfh,
     ]);
 
+    useEffect(() => {
+        setSecondsUntilCheckInOpen(page.props.auth?.secondsUntilCheckInOpen ?? 0);
+    }, [page.props.auth?.secondsUntilCheckInOpen]);
+
     const isWorking = !!checkedInAt && !checkedOutAt;
     const hasCheckedOut = !!checkedOutAt;
 
@@ -105,6 +113,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
             if (hasCheckedOut) {
                 setCooldownRemainingSeconds((prev) => Math.max(0, prev - 1));
             }
+            setSecondsUntilCheckInOpen((prev) => (prev > 0 ? prev - 1 : 0));
         }, 1000);
         return () => window.clearInterval(id);
     }, [isWorking, hasCheckedOut]);
@@ -202,6 +211,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
             checkedOutAt,
             elapsedMs,
             cooldownRemainingSeconds,
+            secondsUntilCheckInOpen,
             skipCooldown,
             siteProject,
             setSiteProject,
@@ -215,6 +225,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
             checkedOutAt,
             elapsedMs,
             cooldownRemainingSeconds,
+            secondsUntilCheckInOpen,
             skipCooldown,
             siteProject,
             checkIn,

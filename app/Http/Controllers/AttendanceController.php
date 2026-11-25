@@ -181,6 +181,14 @@ class AttendanceController extends Controller
             );
         }
 
+        $earliestCheckIn = $today->copy()->setTime(8, 0, 0);
+        if (now()->lt($earliestCheckIn)) {
+            return redirect()->back()->with(
+                'error',
+                'Check-in baru dibuka tepat pukul 08:00 WIB (jam sekarang: '.now()->format('H:i').' WIB).',
+            );
+        }
+
         $validated = $request->validate([
             'mode' => ['required', Rule::in(['office', 'site_visit', 'wfh'])],
             'distance_meters' => ['nullable', 'integer', 'min:0'],

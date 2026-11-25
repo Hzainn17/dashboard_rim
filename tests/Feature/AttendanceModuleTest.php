@@ -534,6 +534,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_site_visit_requires_photo_and_project_while_notes_are_optional(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
         OfficeSetting::current();
         $admin = User::factory()->admin()->create();
         $employee = User::factory()->create();
@@ -664,6 +665,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_field_employee_cannot_site_visit_a_planning_only_project(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
         OfficeSetting::current();
         $fieldEmployee = User::factory()->create();
         Employee::factory()->field()->create(['user_id' => $fieldEmployee->id]);
@@ -759,6 +761,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_office_checkout_requires_office_gps_radius_unless_site_visit_photo_proof_is_submitted(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
         OfficeSetting::query()->updateOrCreate([], [
             'office_name' => 'RIM Studio',
             'latitude' => -6.1753924,
@@ -973,6 +976,7 @@ class AttendanceModuleTest extends TestCase
 
     public function test_office_checkin_and_checkout_are_blocked_when_browser_gps_is_denied(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
         OfficeSetting::query()->updateOrCreate([], [
             'office_name' => 'RIM Studio',
             'latitude' => -6.1753924,
@@ -1128,6 +1132,46 @@ class AttendanceModuleTest extends TestCase
         $this->assertNotNull($attendance->check_out_at);
         $this->assertSame('hadir', $attendance->status);
         $this->assertSame(0, $attendance->shortage_minutes);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_employee_cannot_check_in_before_8_am_and_can_check_in_at_8_am_sharp(): void
+    {
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $employee = User::factory()->create();
+
+        // 1. At 07:59:59 WIB -> blocked!
+        Carbon::setTestNow(Carbon::parse('2026-11-25 07:59:59'));
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseCount('attendances', 0);
+
+        // 2. At 08:00:00 WIB sharp -> allowed!
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:00:00'));
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'office',
+                'latitude' => -6.1754500,
+                'longitude' => 106.8271528,
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseCount('attendances', 1);
 
         Carbon::setTestNow();
     }

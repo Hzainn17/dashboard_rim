@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\OfficeSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -79,6 +80,8 @@ class StudioSettingTest extends TestCase
         Employee::factory()->for($employee)->create();
 
         // Set studio location to Monas Jakarta (-6.1753924, 106.8271528), radius 100m
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-11-25 08:15:00'));
         OfficeSetting::query()->updateOrCreate([], [
             'office_name' => 'RIM Studio Jakarta',
             'latitude' => -6.1753924,
