@@ -11,6 +11,7 @@ import {
     Clock,
     FileText,
     HardHat,
+    Laptop,
     Lock,
     LogIn,
     LogOut,
@@ -33,7 +34,7 @@ type AttendanceItem = {
     id: number;
     user_id: number;
     date: string;
-    mode: 'office' | 'site_visit';
+    mode: 'office' | 'site_visit' | 'wfh';
     is_weekend: boolean;
     compensation_type: 'none' | 'overtime' | 'day_off_exchange';
     exchange_date?: string | null;
@@ -74,7 +75,7 @@ type ActiveOvertime = {
 
 type LeaveRequestItem = {
     id: number;
-    type: 'izin' | 'cuti' | 'sakit';
+    type: 'izin' | 'cuti' | 'sakit' | 'wfh';
     start_date: string;
     end_date: string;
     total_days: number;
@@ -166,6 +167,9 @@ export default function AttendanceIndex({
         todayUnfinishedDailyTasks = [],
     } = usePage<PageProps>().props;
     const isFieldWorker = auth?.workType === 'lapangan';
+    const approvedWfhToday = auth?.approvedWfhToday ?? null;
+    const pendingWfhToday = auth?.pendingWfhToday ?? false;
+    const canUseWfh = !!approvedWfhToday || todayAttendance?.mode === 'wfh';
     const fieldSiteProjects = siteVisitProjects.filter((p) => p.group === 'lapangan');
     const planningSiteProjects = siteVisitProjects.filter((p) => p.group === 'perencanaan');
     const isSuperAdmin = auth?.user?.role === 'super_admin';
@@ -174,8 +178,8 @@ export default function AttendanceIndex({
     const activeMenu = isSuperAdmin ? 'presensi-saya' : 'presensi-harian';
 
     const [activeTab, setActiveTab] = useState<'history' | 'leave'>('history');
-    const [mode, setMode] = useState<'office' | 'site_visit'>(
-        todayAttendance?.mode ?? (isFieldWorker ? 'site_visit' : 'office'),
+    const [mode, setMode] = useState<'office' | 'site_visit' | 'wfh'>(
+        todayAttendance?.mode ?? (approvedWfhToday ? 'wfh' : isFieldWorker ? 'site_visit' : 'office'),
     );
     const [siteProjectId, setSiteProjectId] = useState<string>(
         String(todayAttendance?.site_visit_project_id ?? siteVisitProjects[0]?.id ?? ''),
@@ -305,7 +309,8 @@ export default function AttendanceIndex({
     }, [isWorking, hasCheckedOut, activeOvertime]);
 
     const isSiteVisitToday = todayAttendance?.mode === 'site_visit';
-    const isOfficeGpsBlockedForOvertime = !isSiteVisitToday && !gps.isWithinRadius;
+    const isWfhToday = todayAttendance?.mode === 'wfh';
+    const isOfficeGpsBlockedForOvertime = !isSiteVisitToday && !isWfhToday && !gps.isWithinRadius;
     const canStartOvertime =
         !isLockedDay &&
         !hasCompletedOvertimeToday &&
@@ -328,7 +333,7 @@ export default function AttendanceIndex({
 
     // Leave request form
     const leaveForm = useForm({
-        type: 'cuti' as 'izin' | 'cuti' | 'sakit',
+        type: 'cuti' as 'izin' | 'cuti' | 'sakit' | 'wfh',
         start_date: todayDate,
         end_date: todayDate,
         reason: '',
@@ -368,9 +373,11 @@ export default function AttendanceIndex({
     });
 
     const canCheckInSiteVisit =
-        mode === 'office'
-            ? gps.status === 'ready' && gps.isWithinRadius
-            : !!siteProjectId && !!photoFile;
+        mode === 'wfh'
+            ? canUseWfh
+            : mode === 'office'
+              ? gps.status === 'ready' && gps.isWithinRadius
+              : !!siteProjectId && !!photoFile;
 
     const handleCheckIn = () => {
         if (!canCheckInSiteVisit) {
@@ -638,8 +645,26 @@ export default function AttendanceIndex({
                             </h1>
                         </div>
 
-                        {/* Actions: Koreksi Presensi & Weekend Policy Toggle */}
+                        {/* Actions: Koreksi Presensi, Pengajuan WFH & Weekend Policy Toggle */}
                         <div className="flex flex-wrap items-center gap-2">
+                            {!canUseWfh && !isWorking && !hasCheckedOut && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActiveTab('leave');
+                                        leaveForm.setData('type', 'wfh');
+                                        window.setTimeout(() => {
+                                            document
+                                                .getElementById('pengajuan-izin-section')
+                                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }, 50);
+                                    }}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50/80 px-3 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-100"
+                                >
+                                    <Laptop className="size-3.5 text-sky-700" />
+                                    Ajukan Izin WFH
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => setAdjustmentModal(true)}
@@ -769,6 +794,14 @@ export default function AttendanceIndex({
                     )}
 
                     {/* Flash Feedback */}
+                    {pendingWfhToday && !canUseWfh && (
+                        <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50/90 px-4 py-3 text-xs text-amber-950">
+                            <Laptop className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                            <span>
+                                <strong>Pengajuan Izin WFH Menunggu Persetujuan:</strong> Permohonan WFH Anda untuk hari ini sedang menunggu ACC Super Admin. Mode <strong>Check-in WFH</strong> akan terbuka otomatis di sini begitu disetujui.
+                            </span>
+                        </div>
+                    )}
                     {flash?.success && (
                         <div className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
                             <CheckCircle2 className="size-4 shrink-0" />
@@ -801,6 +834,22 @@ export default function AttendanceIndex({
                                         aria-label="Mode presensi"
                                         className="flex shrink-0 rounded-lg border bg-muted/50 p-0.5"
                                     >
+                                        {canUseWfh && (
+                                            <button
+                                                type="button"
+                                                disabled={isWorking}
+                                                onClick={() => setMode('wfh')}
+                                                className={cn(
+                                                    'inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                                                    mode === 'wfh'
+                                                        ? 'bg-sky-600 text-white shadow-sm'
+                                                        : 'text-sky-800 hover:text-sky-950',
+                                                )}
+                                            >
+                                                <Laptop className="size-3.5" />
+                                                WFH (Disetujui)
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             disabled={isWorking}
@@ -933,8 +982,46 @@ export default function AttendanceIndex({
                                             </div>
                                         )}
 
-                                        {/* Mode Specific Box: Office GPS vs Site Visit */}
-                                        {mode === 'office' ? (
+                                        {/* Mode Specific Box: WFH vs Office GPS vs Site Visit */}
+                                        {mode === 'wfh' ? (
+                                            <div className="flex flex-col gap-3 rounded-lg border border-sky-300/80 bg-sky-50/70 p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+                                                        <Laptop className="size-4" />
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <p className="text-sm font-semibold text-sky-950">
+                                                                Mode WFH (Disetujui Super Admin)
+                                                            </p>
+                                                            <span className="rounded-full bg-sky-200/80 px-2.5 py-0.5 text-[11px] font-semibold text-sky-950">
+                                                                Bebas Radius Kantor
+                                                            </span>
+                                                        </div>
+                                                        <p className="mt-0.5 text-xs text-sky-900/85">
+                                                            Alasan WFH: {approvedWfhToday?.reason ?? todayAttendance?.notes ?? 'Work From Home'}
+                                                        </p>
+                                                        <p className="mt-1 text-[11px] text-sky-800/80">
+                                                            Target jam kerja {officeSetting.standard_work_hours} jam &amp; pengisian To-Do Kerja Tim tetap berjalan normal dan dihitung Hadir di Payroll.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {!isWorking && !hasCheckedOut && (
+                                                    <div>
+                                                        <label className="mb-1 block text-xs font-medium text-sky-950">
+                                                            Catatan Rencana Kerja WFH Hari Ini (Opsional)
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={notes}
+                                                            onChange={(e) => setNotes(e.target.value)}
+                                                            placeholder="Contoh: Fokus revisi gambar DED & koordinasi online…"
+                                                            className="h-9 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm outline-none focus-visible:border-sky-500"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : mode === 'office' ? (
                                             <div
                                                 className={cn(
                                                     'flex items-start gap-3 rounded-lg border p-3.5',
@@ -1260,19 +1347,21 @@ export default function AttendanceIndex({
                                                     className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     <LogIn className="size-4" />
-                                                    {mode === 'office'
-                                                        ? gps.status === 'loading'
-                                                            ? 'Mendeteksi Lokasi GPS…'
-                                                            : gps.status !== 'ready'
-                                                            ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
-                                                            : !gps.isWithinRadius
-                                                            ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
-                                                            : 'Check-in Kantor Sekarang'
-                                                        : !siteProjectId
-                                                        ? 'Pilih Proyek Terlebih Dahulu'
-                                                        : !photoFile
-                                                        ? 'Wajib Ambil / Lampirkan Foto Lokasi'
-                                                        : 'Kirim Check-in Site Visit'}
+                                                    {mode === 'wfh'
+                                                        ? 'Check-in WFH Sekarang'
+                                                        : mode === 'office'
+                                                          ? gps.status === 'loading'
+                                                              ? 'Mendeteksi Lokasi GPS…'
+                                                              : gps.status !== 'ready'
+                                                              ? 'Wajib Izinkan Akses Lokasi (GPS) Browser'
+                                                              : !gps.isWithinRadius
+                                                              ? `Di Luar Radius Kantor (${gps.distanceMeters}m)`
+                                                              : 'Check-in Kantor Sekarang'
+                                                          : !siteProjectId
+                                                          ? 'Pilih Proyek Terlebih Dahulu'
+                                                          : !photoFile
+                                                          ? 'Wajib Ambil / Lampirkan Foto Lokasi'
+                                                          : 'Kirim Check-in Site Visit'}
                                                 </button>
                                             ) : isBeforeTargetCheckout ? (
                                                 <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-accent/45 px-4 py-2.5 text-sm">
@@ -1499,6 +1588,10 @@ export default function AttendanceIndex({
                                                     : 'GPS belum aktif'}{' '}
                                                 / maks {officeSetting.radius_meters}m). Lembur kantor hanya dapat dimulai di area studio.
                                             </div>
+                                        ) : isWfhToday ? (
+                                            <div className="rounded-lg border border-sky-300 bg-sky-50 px-3.5 py-2 text-xs font-medium text-sky-900">
+                                                Mode WFH (Disetujui): Lembur dapat dimulai dari rumah &amp; diverifikasi Super Admin di Pusat Approval.
+                                            </div>
                                         ) : isSiteVisitToday ? (
                                             <div className="rounded-lg border border-sky-300 bg-sky-50 px-3.5 py-2 text-xs font-medium text-sky-900">
                                                 Mode Site Visit Lapangan: Lembur dapat dimulai dari lokasi proyek &amp; diverifikasi Admin di Pusat Approval.
@@ -1636,7 +1729,7 @@ export default function AttendanceIndex({
                                     )}
                                 >
                                     <FileText className="size-3.5" />
-                                    Pengajuan Izin, Cuti & Sakit ({leaveRequests.length})
+                                    Pengajuan Izin, Cuti, Sakit & WFH ({leaveRequests.length})
                                 </button>
                             </div>
 
@@ -1695,6 +1788,11 @@ export default function AttendanceIndex({
                                                                     <HardHat className="size-3.5" />
                                                                     Site Visit
                                                                 </span>
+                                                            ) : item.mode === 'wfh' ? (
+                                                                <span className="inline-flex items-center gap-1 font-medium text-sky-700">
+                                                                    <Laptop className="size-3.5" />
+                                                                    WFH (Remote)
+                                                                </span>
                                                             ) : (
                                                                 <span className="inline-flex items-center gap-1 text-muted-foreground">
                                                                     <Building2 className="size-3.5" />
@@ -1744,13 +1842,13 @@ export default function AttendanceIndex({
                                 </table>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-3">
-                                {/* Form Pengajuan Izin/Cuti/Sakit */}
+                            <div id="pengajuan-izin-section" className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-3">
+                                {/* Form Pengajuan Izin/Cuti/Sakit/WFH */}
                                 <form
                                     onSubmit={handleLeaveSubmit}
                                     className="flex flex-col gap-3.5 rounded-xl border bg-background p-4"
                                 >
-                                    <h3 className="text-sm font-semibold">Ajukan Izin / Cuti / Sakit Baru</h3>
+                                    <h3 className="text-sm font-semibold">Ajukan Izin / Cuti / Sakit / WFH</h3>
 
                                     <div>
                                         <label className="mb-1 block text-xs font-medium">Jenis Permohonan *</label>
@@ -1759,17 +1857,25 @@ export default function AttendanceIndex({
                                             onChange={(e) =>
                                                 leaveForm.setData(
                                                     'type',
-                                                    e.target.value as 'izin' | 'cuti' | 'sakit',
+                                                    e.target.value as 'izin' | 'cuti' | 'sakit' | 'wfh',
                                                 )
                                             }
                                             className="h-9 w-full rounded-lg border bg-card px-2.5 text-sm outline-none"
                                         >
+                                            <option value="wfh">
+                                                Izin WFH (Work From Home — Tetap Kerja {officeSetting.standard_work_hours} Jam)
+                                            </option>
                                             <option value="cuti">
                                                 Cuti Tahunan (Sisa {leaveQuota.remaining_days} hari)
                                             </option>
-                                            <option value="izin">Izin Keperluan Pribadi</option>
+                                            <option value="izin">Izin Tidak Masuk (Keperluan Pribadi)</option>
                                             <option value="sakit">Sakit (Istirahat Medis)</option>
                                         </select>
+                                        {leaveForm.data.type === 'wfh' && (
+                                            <p className="mt-1.5 rounded-md border border-sky-200 bg-sky-50/80 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-900">
+                                                Setelah di-ACC Super Admin, tombol <strong>Check-in WFH</strong> otomatis terbuka pada tanggal tersebut (tetap wajib kerja {officeSetting.standard_work_hours} jam &amp; dihitung Hadir).
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2.5">
@@ -1848,7 +1954,13 @@ export default function AttendanceIndex({
                                                 leaveRequests.map((lr) => (
                                                     <tr key={lr.id} className="hover:bg-muted/30">
                                                         <td className="px-4 py-3 font-medium capitalize">
-                                                            {lr.type}
+                                                            {lr.type === 'wfh' ? (
+                                                                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900">
+                                                                    Izin WFH
+                                                                </span>
+                                                            ) : (
+                                                                lr.type
+                                                            )}
                                                         </td>
                                                         <td className="px-4 py-3 font-mono text-xs">
                                                             {lr.start_date} s/d {lr.end_date}

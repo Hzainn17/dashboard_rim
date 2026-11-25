@@ -39,7 +39,7 @@ type RecentLog = {
     user_name: string;
     employee_code: string;
     date: string;
-    mode: 'office' | 'site_visit';
+    mode: 'office' | 'site_visit' | 'wfh';
     check_in_time?: string | null;
     check_out_time?: string | null;
     actual_work_minutes?: number | null;
@@ -122,7 +122,7 @@ export default function AttendanceMonitoring({
         adjust_type: 'attendance',
         user_id: employees[0]?.id ?? 1,
         date: todayStr,
-        mode: 'office' as 'office' | 'site_visit',
+        mode: 'office' as 'office' | 'site_visit' | 'wfh',
         status: 'hadir' as
             | 'hadir'
             | 'kurang_jam'
@@ -544,7 +544,9 @@ export default function AttendanceMonitoring({
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-xs capitalize">
-                                                    {log.mode.replace('_', ' ')}
+                                                    {log.mode === 'wfh'
+                                                        ? 'WFH (Remote)'
+                                                        : log.mode.replace('_', ' ')}
                                                 </td>
                                                 <td className="px-4 py-3 font-mono text-xs">
                                                     {log.check_in_time ?? '—'} s/d {log.check_out_time ?? '—'}
@@ -751,12 +753,13 @@ export default function AttendanceMonitoring({
                                                 onChange={(e) =>
                                                     adjustForm.setData(
                                                         'mode',
-                                                        e.target.value as 'office' | 'site_visit',
+                                                        e.target.value as 'office' | 'site_visit' | 'wfh',
                                                     )
                                                 }
                                                 className="h-9 w-full rounded-lg border bg-background px-2.5 text-sm outline-none"
                                             >
                                                 <option value="office">Kantor Studio</option>
+                                                <option value="wfh">WFH (Work From Home)</option>
                                                 <option value="site_visit">Site Visit Lapangan</option>
                                             </select>
                                         </div>

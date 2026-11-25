@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, usePage } from '@inertiajs/react';
 import { PageProps } from '@/types';
 
-export type AttendanceMode = 'office' | 'site';
+export type AttendanceMode = 'office' | 'site' | 'wfh';
 
 type AttendanceState = {
     mode: AttendanceMode;
@@ -38,9 +38,17 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     const serverAtt = page.props.auth?.todayAttendance ?? null;
 
     const isFieldWorker = page.props.auth?.workType === 'lapangan';
-    const [mode, setMode] = useState<AttendanceMode>(
-        serverAtt ? (serverAtt.mode === 'site_visit' ? 'site' : 'office') : isFieldWorker ? 'site' : 'office',
-    );
+    const hasApprovedWfh = !!page.props.auth?.approvedWfhToday;
+    const resolveInitialMode = (): AttendanceMode => {
+        if (serverAtt) {
+            if (serverAtt.mode === 'site_visit') return 'site';
+            if (serverAtt.mode === 'wfh') return 'wfh';
+            return 'office';
+        }
+        if (hasApprovedWfh) return 'wfh';
+        return isFieldWorker ? 'site' : 'office';
+    };
+    const [mode, setMode] = useState<AttendanceMode>(resolveInitialMode);
     const [checkedInAt, setCheckedInAt] = useState<Date | null>(
         serverAtt?.check_in_at ? new Date(serverAtt.check_in_at) : null,
     );
@@ -59,12 +67,20 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     // Sync state whenever server props update (after check-in / check-out)
     useEffect(() => {
         if (serverAtt) {
-            setMode(serverAtt.mode === 'site_visit' ? 'site' : 'office');
+            setMode(
+                serverAtt.mode === 'site_visit'
+                    ? 'site'
+                    : serverAtt.mode === 'wfh'
+                      ? 'wfh'
+                      : 'office',
+            );
             setCheckedInAt(serverAtt.check_in_at ? new Date(serverAtt.check_in_at) : null);
             setCheckedOutAt(serverAtt.check_out_at ? new Date(serverAtt.check_out_at) : null);
             setElapsedSeconds(serverAtt.elapsed_seconds ?? 0);
             setCooldownRemainingSeconds(serverAtt.cooldown_remaining_seconds ?? 3600);
             setSiteProject(serverAtt.site_visit_project_id ? String(serverAtt.site_visit_project_id) : null);
+        } else if (hasApprovedWfh) {
+            setMode('wfh');
         }
     }, [
         serverAtt?.id,
@@ -74,6 +90,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         serverAtt?.cooldown_remaining_seconds,
         serverAtt?.mode,
         serverAtt?.site_visit_project_id,
+        hasApprovedWfh,
     ]);
 
     const isWorking = !!checkedInAt && !checkedOutAt;
@@ -104,7 +121,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
             router.post(
                 route('attendance.check-in'),
                 {
-                    mode: mode === 'site' ? 'site_visit' : 'office',
+                    mode: mode === 'site' ? 'site_visit' : mode === 'wfh' ? 'wfh' : 'office',
                     ...(coords?.latitude != null && coords?.longitude != null
                         ? {
                               latitude: coords.latitude,

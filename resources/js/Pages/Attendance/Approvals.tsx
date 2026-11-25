@@ -25,7 +25,7 @@ type SiteVisitItem = {
     employee_code: string;
     position: string;
     date: string;
-    mode: 'office' | 'site_visit';
+    mode: 'office' | 'site_visit' | 'wfh';
     is_weekend: boolean;
     compensation_type: 'none' | 'overtime' | 'day_off_exchange';
     exchange_date?: string | null;
@@ -45,7 +45,7 @@ type LeaveRequestItem = {
     employee_code: string;
     position: string;
     annual_leave_quota: number;
-    type: 'izin' | 'cuti' | 'sakit';
+    type: 'izin' | 'cuti' | 'sakit' | 'wfh';
     start_date: string;
     end_date: string;
     total_days: number;
@@ -76,7 +76,7 @@ type AdjustmentItem = {
     employee_code: string;
     position: string;
     date: string;
-    mode: 'office' | 'site_visit';
+    mode: 'office' | 'site_visit' | 'wfh';
     adjustment_type: 'none' | 'check_in' | 'check_out' | 'full_day';
     adjustment_status: 'none' | 'pending' | 'approved' | 'rejected';
     check_in_time?: string | null;
@@ -310,7 +310,7 @@ export default function AttendanceApprovals({
                                     )}
                                 >
                                     <FileText className="size-3.5" />
-                                    Izin & Cuti
+                                    Izin, Cuti & WFH
                                     {counts.leave_pending > 0 && (
                                         <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">
                                             {counts.leave_pending}
@@ -539,9 +539,15 @@ export default function AttendanceApprovals({
                                                         </p>
                                                     </td>
                                                     <td className="px-4 py-3.5">
-                                                        <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium capitalize text-accent-foreground">
-                                                            {lr.type}
-                                                        </span>
+                                                        {lr.type === 'wfh' ? (
+                                                            <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
+                                                                Izin WFH (Remote)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium capitalize text-accent-foreground">
+                                                                {lr.type}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 py-3.5 font-mono text-xs">
                                                         {lr.start_date} s/d {lr.end_date}
@@ -549,7 +555,9 @@ export default function AttendanceApprovals({
                                                     <td className="px-4 py-3.5 text-xs">
                                                         <p className="font-medium">{lr.total_days} hari kerja</p>
                                                         <p className="text-muted-foreground">
-                                                            Kuota tahunan: {lr.annual_leave_quota} hari
+                                                            {lr.type === 'wfh'
+                                                                ? 'Membuka akses Check-in WFH 9 jam'
+                                                                : `Kuota tahunan: ${lr.annual_leave_quota} hari`}
                                                         </p>
                                                     </td>
                                                     <td className="px-4 py-3.5 text-xs text-muted-foreground">

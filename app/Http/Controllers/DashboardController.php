@@ -32,7 +32,7 @@ class DashboardController extends Controller
 
         $presentCount = Attendance::query()
             ->whereDate('date', $today)
-            ->where('mode', 'office')
+            ->whereIn('mode', ['office', 'wfh'])
             ->whereIn('status', ['hadir', 'kurang_jam'])
             ->whereHas('user', fn ($q) => $q->where('is_active', true)->where('role', '!=', UserRole::SuperAdmin))
             ->distinct('user_id')

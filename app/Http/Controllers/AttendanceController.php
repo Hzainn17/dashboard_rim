@@ -182,7 +182,7 @@ class AttendanceController extends Controller
         }
 
         $validated = $request->validate([
-            'mode' => ['required', Rule::in(['office', 'site_visit'])],
+            'mode' => ['required', Rule::in(['office', 'site_visit', 'wfh'])],
             'distance_meters' => ['nullable', 'integer', 'min:0'],
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
@@ -210,6 +210,34 @@ class AttendanceController extends Controller
 
         $hasCoords = isset($validated['latitude'], $validated['longitude']);
         $distance = null;
+        $approvedWfh = null;
+
+        if ($validated['mode'] === 'wfh') {
+            $approvedWfh = LeaveRequest::query()
+                ->where('user_id', $user->id)
+                ->where('type', 'wfh')
+                ->where('status', 'approved')
+                ->whereDate('start_date', '<=', $today)
+                ->whereDate('end_date', '>=', $today)
+                ->latest('approved_at')
+                ->first();
+
+            if (! $approvedWfh) {
+                return redirect()->back()->with(
+                    'error',
+                    'Mode WFH hanya dapat digunakan jika pengajuan Izin WFH untuk hari ini sudah disetujui Super Admin.',
+                );
+            }
+
+            if ($hasCoords) {
+                $distance = $this->calculateHaversineMeters(
+                    (float) $validated['latitude'],
+                    (float) $validated['longitude'],
+                    (float) $officeSetting->latitude,
+                    (float) $officeSetting->longitude,
+                );
+            }
+        }
 
         if ($validated['mode'] === 'office') {
             if (! $hasCoords && ! isset($validated['distance_meters'])) {
@@ -252,6 +280,8 @@ class AttendanceController extends Controller
             $siteVisitPhotoUrl = "/uploads/site-visits/{$filename}";
         }
 
+        $checkInNotes = $validated['notes'] ?? ($approvedWfh ? "WFH (Disetujui): {$approvedWfh->reason}" : null);
+
         $attendance = $this->upsertAttendanceForDate($user->id, $today, [
             'mode' => $validated['mode'],
             'is_weekend' => $isWeekend,
@@ -260,9 +290,9 @@ class AttendanceController extends Controller
             'compensation_status' => $isWeekend ? 'pending' : 'none',
             'check_in_at' => now(),
             'check_out_at' => null,
-            'check_in_lat' => $validated['latitude'] ?? $officeSetting->latitude,
-            'check_in_lng' => $validated['longitude'] ?? $officeSetting->longitude,
-            'check_in_distance_meters' => $validated['mode'] === 'office' ? $distance : null,
+            'check_in_lat' => $validated['latitude'] ?? ($validated['mode'] === 'wfh' ? null : $officeSetting->latitude),
+            'check_in_lng' => $validated['longitude'] ?? ($validated['mode'] === 'wfh' ? null : $officeSetting->longitude),
+            'check_in_distance_meters' => in_array($validated['mode'], ['office', 'wfh'], true) ? $distance : null,
             'target_work_minutes' => $user->dailyTargetWorkMinutes(),
             'actual_work_minutes' => null,
             'shortage_minutes' => 0,
@@ -270,10 +300,14 @@ class AttendanceController extends Controller
             'site_visit_project_id' => $validated['mode'] === 'site_visit' ? $validated['site_visit_project_id'] : null,
             'site_visit_photo_url' => $validated['mode'] === 'site_visit' ? $siteVisitPhotoUrl : null,
             'site_visit_status' => $validated['mode'] === 'site_visit' ? 'pending' : 'none',
-            'notes' => $validated['notes'] ?? null,
+            'notes' => $checkInNotes,
         ]);
 
-        $modeLabel = $validated['mode'] === 'site_visit' ? 'Site Visit' : 'Kantor';
+        $modeLabel = match ($validated['mode']) {
+            'site_visit' => 'Site Visit',
+            'wfh' => 'WFH',
+            default => 'Kantor',
+        };
         ActivityLog::record(
             action: 'attendance.checkin',
             description: "{$user->name} melakukan check-in ({$modeLabel})",
@@ -442,9 +476,9 @@ class AttendanceController extends Controller
             ->first();
 
         $officeSetting = OfficeSetting::current();
-        $isSiteVisit = $todayAttendance?->mode === 'site_visit';
+        $isRemoteMode = in_array($todayAttendance?->mode, ['site_visit', 'wfh'], true);
 
-        if (! $isSiteVisit && isset($validated['latitude'], $validated['longitude'])) {
+        if (! $isRemoteMode && isset($validated['latitude'], $validated['longitude'])) {
             $distance = $this->calculateHaversineMeters(
                 (float) $validated['latitude'],
                 (float) $validated['longitude'],
@@ -531,7 +565,7 @@ class AttendanceController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'type' => ['required', Rule::in(['izin', 'cuti', 'sakit'])],
+            'type' => ['required', Rule::in(['izin', 'cuti', 'sakit', 'wfh'])],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'reason' => ['required', 'string', 'max:500'],
@@ -565,12 +599,20 @@ class AttendanceController extends Controller
             $lock->release();
         }
 
+        $typeLabel = $validated['type'] === 'wfh' ? 'Izin WFH' : $validated['type'];
         ActivityLog::record(
             action: 'leave.requested',
-            description: "{$user->name} mengajukan {$validated['type']} ({$totalDays} hari)",
+            description: "{$user->name} mengajukan {$typeLabel} ({$totalDays} hari)",
             reference: $leave,
             user: $user,
         );
+
+        if ($validated['type'] === 'wfh') {
+            return redirect()->back()->with(
+                'success',
+                "Permohonan Izin WFH ({$totalDays} hari) berhasil dikirim ke Pusat Approval Super Admin. Mode Check-in WFH akan otomatis terbuka setelah disetujui.",
+            );
+        }
 
         return redirect()->back()->with('success', "Permohonan {$validated['type']} ({$totalDays} hari) berhasil diajukan.");
     }
@@ -950,7 +992,7 @@ class AttendanceController extends Controller
             'rejection_reason' => $newStatus === 'rejected' ? ($validated['rejection_reason'] ?? 'Ditolak oleh Admin') : null,
         ]);
 
-        if ($newStatus === 'approved') {
+        if ($newStatus === 'approved' && $leaveRequest->type !== 'wfh') {
             $leaveUser = $leaveRequest->user?->load('employee');
             $period = CarbonPeriod::create($leaveRequest->start_date, $leaveRequest->end_date);
             foreach ($period as $date) {
@@ -973,7 +1015,16 @@ class AttendanceController extends Controller
             }
         }
 
-        return redirect()->back()->with('success', "Permohonan {$leaveRequest->type} berhasil diperbarui ({$newStatus}).");
+        $typeLabel = $leaveRequest->type === 'wfh' ? 'Izin WFH' : $leaveRequest->type;
+        $actionLabel = $newStatus === 'approved' ? 'menyetujui' : 'menolak';
+        ActivityLog::record(
+            action: 'leave.approval',
+            description: "Super Admin {$actionLabel} permohonan {$typeLabel} {$leaveRequest->user?->name}",
+            reference: $leaveRequest,
+            user: $request->user(),
+        );
+
+        return redirect()->back()->with('success', "Permohonan {$typeLabel} berhasil diperbarui ({$newStatus}).");
     }
 
     /**
@@ -1089,7 +1140,7 @@ class AttendanceController extends Controller
             ->whereDate('date', $today)
             ->get();
 
-        $officePresent = $todayAttendances->where('mode', 'office')->whereIn('status', ['hadir', 'kurang_jam'])->count();
+        $officePresent = $todayAttendances->whereIn('mode', ['office', 'wfh'])->whereIn('status', ['hadir', 'kurang_jam'])->count();
         $siteVisitToday = $todayAttendances->where('mode', 'site_visit')->count();
         $leaveToday = $todayAttendances->whereIn('status', ['izin', 'cuti', 'sakit', 'ganti_hari'])->count();
         $notYetPresent = max(0, $users->count() - ($officePresent + $siteVisitToday + $leaveToday));
@@ -1261,7 +1312,7 @@ class AttendanceController extends Controller
         $validated = $request->validate([
             'user_id' => ['required', 'exists:users,id'],
             'date' => ['required', 'date'],
-            'mode' => ['required', Rule::in(['office', 'site_visit'])],
+            'mode' => ['required', Rule::in(['office', 'site_visit', 'wfh'])],
             'status' => ['required', Rule::in(['hadir', 'kurang_jam', 'izin', 'sakit', 'cuti', 'alpha', 'site_visit', 'ganti_hari'])],
             'check_in_time' => ['nullable', 'date_format:H:i'],
             'check_out_time' => ['nullable', 'date_format:H:i'],
@@ -1411,6 +1462,7 @@ class AttendanceController extends Controller
 
         $hasLeaveToday = LeaveRequest::query()
             ->where('user_id', $user->id)
+            ->whereIn('type', ['izin', 'cuti', 'sakit'])
             ->whereDate('start_date', '<=', $today)
             ->whereDate('end_date', '>=', $today)
             ->where('status', 'approved')

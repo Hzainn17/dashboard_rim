@@ -68,7 +68,7 @@ export interface Attendance {
     id: number;
     user_id: number;
     date: string;
-    mode: 'office' | 'site_visit';
+    mode: 'office' | 'site_visit' | 'wfh';
     is_weekend: boolean;
     check_in_at?: string | null;
     check_out_at?: string | null;
@@ -147,7 +147,7 @@ export type PageProps<
         user: User;
         todayAttendance?: {
             id: number;
-            mode: 'office' | 'site_visit';
+            mode: 'office' | 'site_visit' | 'wfh';
             is_weekend?: boolean;
             status: string;
             check_in_at?: string | null;
@@ -179,6 +179,13 @@ export type PageProps<
             status: 'active' | 'pending' | 'approved' | 'rejected';
         } | null;
         hasLeaveToday?: boolean;
+        approvedWfhToday?: {
+            id: number;
+            reason: string;
+            start_date: string;
+            end_date: string;
+        } | null;
+        pendingWfhToday?: boolean;
         workType?: 'kantor' | 'lapangan';
         targetWorkHours?: number;
         targetWorkMinutes?: number;

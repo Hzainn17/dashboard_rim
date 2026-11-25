@@ -1047,4 +1047,88 @@ class AttendanceModuleTest extends TestCase
         $this->assertSame('08:11', $attendance->check_in_at->format('H:i'));
         $this->assertSame('17:11', $attendance->check_out_at->format('H:i'));
     }
+
+    public function test_wfh_requires_super_admin_pre_approval_and_allows_remote_checkin_checkout(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-25 08:15:00'));
+
+        OfficeSetting::query()->updateOrCreate([], [
+            'office_name' => 'RIM Studio',
+            'latitude' => -6.1753924,
+            'longitude' => 106.8271528,
+            'radius_meters' => 100,
+        ]);
+
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $employee = User::factory()->create(['role' => 'employee']);
+
+        // 1. Cannot check-in WFH without approved WFH request
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'wfh',
+            ])
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseCount('attendances', 0);
+
+        // 2. Employee submits WFH request -> still pending, cannot check-in WFH yet
+        $this->actingAs($employee)
+            ->post('/attendance/leave-requests', [
+                'type' => 'wfh',
+                'start_date' => '2026-11-25',
+                'end_date' => '2026-11-25',
+                'reason' => 'Menunggu teknisi listrik di rumah sambil menyelesaikan DED',
+            ])
+            ->assertSessionHas('success');
+
+        $wfhRequest = LeaveRequest::query()->where('user_id', $employee->id)->firstOrFail();
+        $this->assertSame('wfh', $wfhRequest->type);
+        $this->assertSame('pending', $wfhRequest->status);
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'wfh',
+            ])
+            ->assertSessionHas('error');
+
+        // 3. Super Admin approves WFH -> does NOT auto-lock day as non-working leave!
+        $this->actingAs($superAdmin)
+            ->patch("/attendance/approvals/leave/{$wfhRequest->id}", [
+                'action' => 'approve',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseCount('attendances', 0);
+
+        // 4. Employee checks in WFH from home (far outside 100m office radius) -> succeeds!
+        $this->actingAs($employee)
+            ->post('/attendance/check-in', [
+                'mode' => 'wfh',
+                'latitude' => -6.9174639,
+                'longitude' => 107.6191228,
+                'notes' => 'Fokus revisi gambar denah & tampak',
+            ])
+            ->assertSessionHas('success');
+
+        $attendance = Attendance::query()->where('user_id', $employee->id)->firstOrFail();
+        $this->assertSame('wfh', $attendance->mode);
+        $this->assertSame('hadir', $attendance->status);
+        $this->assertSame(540, $attendance->target_work_minutes);
+
+        // 5. Employee checks out WFH after 9 hours without office GPS lock -> succeeds as 'hadir'!
+        Carbon::setTestNow(Carbon::parse('2026-11-25 17:20:00'));
+
+        $this->actingAs($employee)
+            ->post('/attendance/check-out', [
+                'simulated_minutes' => 545,
+            ])
+            ->assertSessionHas('success');
+
+        $attendance->refresh();
+        $this->assertNotNull($attendance->check_out_at);
+        $this->assertSame('hadir', $attendance->status);
+        $this->assertSame(0, $attendance->shortage_minutes);
+
+        Carbon::setTestNow();
+    }
 }

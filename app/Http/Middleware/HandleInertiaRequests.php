@@ -69,9 +69,31 @@ class HandleInertiaRequests extends Middleware
         $hasLeaveToday = $user
             ? LeaveRequest::query()
                 ->where('user_id', $user->id)
+                ->whereIn('type', ['izin', 'cuti', 'sakit'])
                 ->whereDate('start_date', '<=', Carbon::today())
                 ->whereDate('end_date', '>=', Carbon::today())
                 ->where('status', 'approved')
+                ->exists()
+            : false;
+
+        $approvedWfhToday = $user
+            ? LeaveRequest::query()
+                ->where('user_id', $user->id)
+                ->where('type', 'wfh')
+                ->whereDate('start_date', '<=', Carbon::today())
+                ->whereDate('end_date', '>=', Carbon::today())
+                ->where('status', 'approved')
+                ->latest('approved_at')
+                ->first()
+            : null;
+
+        $pendingWfhToday = $user && ! $approvedWfhToday
+            ? LeaveRequest::query()
+                ->where('user_id', $user->id)
+                ->where('type', 'wfh')
+                ->whereDate('start_date', '<=', Carbon::today())
+                ->whereDate('end_date', '>=', Carbon::today())
+                ->where('status', 'pending')
                 ->exists()
             : false;
 
@@ -152,6 +174,13 @@ class HandleInertiaRequests extends Middleware
                     'status' => $todayOvertime->status,
                 ] : null,
                 'hasLeaveToday' => $hasLeaveToday,
+                'approvedWfhToday' => $approvedWfhToday ? [
+                    'id' => $approvedWfhToday->id,
+                    'reason' => $approvedWfhToday->reason,
+                    'start_date' => $approvedWfhToday->start_date->format('Y-m-d'),
+                    'end_date' => $approvedWfhToday->end_date->format('Y-m-d'),
+                ] : null,
+                'pendingWfhToday' => $pendingWfhToday,
                 'workType' => $user?->employee?->work_type ?? 'kantor',
                 'targetWorkHours' => $user ? $user->dailyTargetWorkHours() : 9,
                 'targetWorkMinutes' => $user ? $user->dailyTargetWorkMinutes() : 540,

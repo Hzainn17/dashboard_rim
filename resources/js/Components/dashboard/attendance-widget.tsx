@@ -7,6 +7,7 @@ import {
     Camera,
     Clock,
     HardHat,
+    Laptop,
     LogIn,
     LogOut,
     MapPin,
@@ -60,6 +61,8 @@ export function AttendanceWidget() {
     const todayOvertime = auth?.todayOvertime ?? null;
     const activeOvertime = auth?.activeOvertime ?? null;
     const hasLeaveToday = auth?.hasLeaveToday ?? false;
+    const approvedWfhToday = auth?.approvedWfhToday ?? null;
+    const canUseWfh = !!approvedWfhToday || auth?.todayAttendance?.mode === 'wfh';
     const isLockedDay =
         ['ganti_hari', 'izin', 'cuti', 'sakit'].includes(auth?.todayAttendance?.status ?? '') ||
         hasLeaveToday;
@@ -105,9 +108,11 @@ export function AttendanceWidget() {
     const overtime = Math.max(0, elapsed - TARGET_MS);
     const targetEnd = checkedInAt ? new Date(checkedInAt.getTime() + TARGET_MS) : null;
     const siteReady =
-        mode === 'office'
-            ? gps.status === 'ready' && gps.isWithinRadius
-            : !!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url);
+        mode === 'wfh'
+            ? canUseWfh
+            : mode === 'office'
+              ? gps.status === 'ready' && gps.isWithinRadius
+              : !!siteProject && (!!photoFile || !!auth?.todayAttendance?.site_visit_photo_url);
 
     const isOfficeOutOfRadius =
         isWorking && mode === 'office' && gps.status === 'ready' && !gps.isWithinRadius;
@@ -151,7 +156,7 @@ export function AttendanceWidget() {
                         </p>
                     </div>
                 </div>
-                <ModeToggle mode={mode} onChange={setMode} disabled={isWorking} />
+                <ModeToggle mode={mode} onChange={setMode} disabled={isWorking} canUseWfh={canUseWfh} />
             </div>
 
             <div className="flex flex-1 flex-col gap-4 p-5">
@@ -170,7 +175,24 @@ export function AttendanceWidget() {
                     </div>
                 )}
 
-                {mode === 'office' ? (
+                {mode === 'wfh' ? (
+                    <div className="flex items-start gap-3 rounded-lg border border-sky-300/70 bg-sky-50/70 p-3 shadow-2xs">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+                            <Laptop className="size-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-sky-950">
+                                Izin WFH Disetujui Super Admin
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-sky-900/80">
+                                {approvedWfhToday?.reason ?? auth?.todayAttendance?.notes ?? 'Kerja remote dari rumah'}
+                            </p>
+                            <p className="mt-1 text-[11px] text-sky-800/80">
+                                Bebas radius GPS kantor · Target kerja {targetWorkHours} jam tetap berlaku
+                            </p>
+                        </div>
+                    </div>
+                ) : mode === 'office' ? (
                     <div
                         className={cn(
                             'flex items-start gap-3 rounded-lg border bg-card/95 p-3 shadow-2xs',
@@ -533,15 +555,17 @@ export function AttendanceWidget() {
                             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-xs transition-colors outline-none hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <LogIn className="size-4" aria-hidden="true" />
-                            {mode === 'office'
-                                ? gps.status === 'loading'
-                                    ? 'Mendeteksi GPS…'
-                                    : gps.status !== 'ready'
-                                    ? 'Aktifkan Izin Lokasi (GPS)'
-                                    : !gps.isWithinRadius
-                                    ? `Di Luar Radius (${gps.distanceMeters}m)`
-                                    : 'Check-in Kantor'
-                                : 'Check-in Site Visit'}
+                            {mode === 'wfh'
+                                ? 'Check-in WFH'
+                                : mode === 'office'
+                                  ? gps.status === 'loading'
+                                      ? 'Mendeteksi GPS…'
+                                      : gps.status !== 'ready'
+                                      ? 'Aktifkan Izin Lokasi (GPS)'
+                                      : !gps.isWithinRadius
+                                      ? `Di Luar Radius (${gps.distanceMeters}m)`
+                                      : 'Check-in Kantor'
+                                  : 'Check-in Site Visit'}
                         </button>
                     )}
                 </div>
@@ -618,12 +642,17 @@ function ModeToggle({
     mode,
     onChange,
     disabled,
+    canUseWfh = false,
 }: {
     mode: AttendanceMode;
     onChange: (m: AttendanceMode) => void;
     disabled: boolean;
+    canUseWfh?: boolean;
 }) {
     const options = [
+        ...(canUseWfh || mode === 'wfh'
+            ? [{ value: 'wfh' as const, label: 'WFH', icon: Laptop }]
+            : []),
         { value: 'office' as const, label: 'Kantor', icon: Building2 },
         { value: 'site' as const, label: 'Site Visit', icon: HardHat },
     ];
