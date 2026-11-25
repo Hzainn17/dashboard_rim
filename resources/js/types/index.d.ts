@@ -148,6 +148,7 @@ export type PageProps<
         todayAttendance?: {
             id: number;
             mode: 'office' | 'site_visit';
+            is_weekend?: boolean;
             status: string;
             check_in_at?: string | null;
             check_out_at?: string | null;

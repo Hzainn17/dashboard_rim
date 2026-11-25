@@ -22,7 +22,12 @@ import { cn } from '@/lib/utils';
 import { formatClock, formatCooldown, formatDuration, useAttendance, type AttendanceMode } from './attendance-context';
 
 export function AttendanceWidget() {
-    const { auth, officeSetting, siteVisitProjects = [] } = usePage<
+    const {
+        auth,
+        officeSetting,
+        siteVisitProjects = [],
+        todayUnfinishedDailyTasks = [],
+    } = usePage<
         PageProps & {
             officeSetting?: {
                 office_name: string;
@@ -107,13 +112,15 @@ export function AttendanceWidget() {
     const isOfficeOutOfRadius =
         isWorking && mode === 'office' && gps.status === 'ready' && !gps.isWithinRadius;
     const isOfficeGpsMissing = isWorking && mode === 'office' && gps.status !== 'ready';
+    const isBeforeTargetCheckout =
+        isWorking && !auth?.todayAttendance?.is_weekend && elapsed < TARGET_MS;
 
     const handleCheckOutClick = () => {
-        if (isOfficeOutOfRadius) {
+        if (isOfficeOutOfRadius || todayUnfinishedDailyTasks.length > 0) {
             router.visit(route('attendance.index'));
             return;
         }
-        if (elapsed < TARGET_MS) {
+        if (elapsed < TARGET_MS && !auth?.todayAttendance?.is_weekend) {
             setEarlyCheckoutModal(true);
             return;
         }
@@ -409,7 +416,17 @@ export function AttendanceWidget() {
                         </div>
                     ) : isWorking ? (
                         <div className="flex flex-col gap-1.5">
-                            {isOfficeOutOfRadius ? (
+                            {isBeforeTargetCheckout ? (
+                                <div className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-primary/25 bg-accent/55 px-3 text-xs font-medium text-primary">
+                                    <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+                                    <span>
+                                        Sedang Bekerja · Check-out dibuka{' '}
+                                        <strong className="font-mono">
+                                            {targetEnd ? formatClock(targetEnd).slice(0, 5) : '--:--'} WIB
+                                        </strong>
+                                    </span>
+                                </div>
+                            ) : isOfficeOutOfRadius ? (
                                 <button
                                     type="button"
                                     onClick={() => router.visit(route('attendance.index'))}
@@ -437,7 +454,17 @@ export function AttendanceWidget() {
                                 >
                                     Koreksi jam masuk?
                                 </button>
-                                {elapsedMinutes >= targetWorkMinutes &&
+                                {isBeforeTargetCheckout ? (
+                                    <button
+                                        type="button"
+                                        disabled={isOfficeGpsMissing}
+                                        onClick={handleCheckOutClick}
+                                        className="hover:text-amber-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isOfficeGpsMissing ? 'Aktifkan GPS untuk Pulang Cepat' : 'Izin Pulang Cepat'}
+                                    </button>
+                                ) : (
+                                    elapsedMinutes >= targetWorkMinutes &&
                                     (mode !== 'office' || (gps.status === 'ready' && gps.isWithinRadius)) && (
                                         <button
                                             type="button"
@@ -446,7 +473,8 @@ export function AttendanceWidget() {
                                         >
                                             Check-out &amp; Langsung Lembur →
                                         </button>
-                                    )}
+                                    )
+                                )}
                             </div>
                         </div>
                     ) : checkedOutAt ? (

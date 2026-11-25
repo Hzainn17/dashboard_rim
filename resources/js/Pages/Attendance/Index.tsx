@@ -418,6 +418,9 @@ export default function AttendanceIndex({
         elapsedMinutes >= targetMinutes &&
         (todayAttendance?.mode !== 'office' || (gps.status === 'ready' && gps.isWithinRadius));
 
+    const isBeforeTargetCheckout =
+        isWorking && !todayAttendance?.is_weekend && elapsedMinutes < targetMinutes;
+
     const proceedAfterTodoCheck = () => {
         if (elapsedMinutes < targetMinutes && !todayAttendance?.is_weekend) {
             setEarlyCheckoutModal(true);
@@ -1271,6 +1274,36 @@ export default function AttendanceIndex({
                                                         ? 'Wajib Ambil / Lampirkan Foto Lokasi'
                                                         : 'Kirim Check-in Site Visit'}
                                                 </button>
+                                            ) : isBeforeTargetCheckout ? (
+                                                <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-accent/45 px-4 py-2.5 text-sm">
+                                                    <div className="flex items-center gap-2 font-medium text-primary">
+                                                        <Clock className="size-4 shrink-0" />
+                                                        <span>
+                                                            Sedang Bekerja · Check-out dibuka pukul{' '}
+                                                            <strong className="font-mono">
+                                                                {targetEndDate
+                                                                    ? targetEndDate.toTimeString().slice(0, 5)
+                                                                    : '--:--'}{' '}
+                                                                WIB
+                                                            </strong>
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isOfficeGpsMissingForCheckout}
+                                                        onClick={handleCheckOutClick}
+                                                        title={
+                                                            isOfficeGpsMissingForCheckout
+                                                                ? 'Aktifkan izin lokasi (GPS) browser terlebih dahulu'
+                                                                : 'Gunakan hanya jika ada keperluan darurat / izin pulang lebih awal'
+                                                        }
+                                                        className="text-xs font-medium text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        {isOfficeGpsMissingForCheckout
+                                                            ? 'Aktifkan GPS untuk Pulang Cepat'
+                                                            : 'Izin Pulang Cepat'}
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="flex w-full flex-col gap-2">
                                                     {isOfficeGpsMissingForCheckout && (

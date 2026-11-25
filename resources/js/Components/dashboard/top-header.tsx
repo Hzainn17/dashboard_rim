@@ -27,7 +27,8 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
     }, [serverNotifications]);
 
     const unread = items.filter((n) => n.unread).length;
-    const isWorking = checkedInAt && !checkedOutAt;
+    const isWorking = !!checkedInAt && !checkedOutAt;
+    const hasCheckedOut = !!checkedOutAt;
 
     const handleMarkAllRead = () => {
         setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -122,21 +123,29 @@ export function TopHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
                 <button
                     type="button"
                     onClick={() => router.visit(route('attendance.index'))}
-                    disabled={!!isWorking}
+                    disabled={isWorking || hasCheckedOut}
                     className={cn(
                         'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
-                        isWorking
+                        isWorking || hasCheckedOut
                             ? 'border bg-card text-success'
                             : 'bg-primary text-primary-foreground hover:bg-primary/90',
                     )}
                 >
-                    {isWorking ? (
+                    {isWorking || hasCheckedOut ? (
                         <CheckCircle2 className="size-4" aria-hidden="true" />
                     ) : (
                         <LogIn className="size-4" aria-hidden="true" />
                     )}
-                    <span className="hidden sm:inline">{isWorking ? 'Sudah Check-in' : 'Check-in Cepat'}</span>
-                    <span className="sm:hidden">{isWorking ? 'Hadir' : 'Check-in'}</span>
+                    <span className="hidden sm:inline">
+                        {hasCheckedOut
+                            ? 'Presensi Selesai'
+                            : isWorking
+                              ? 'Sudah Check-in'
+                              : 'Check-in Cepat'}
+                    </span>
+                    <span className="sm:hidden">
+                        {hasCheckedOut ? 'Selesai' : isWorking ? 'Hadir' : 'Check-in'}
+                    </span>
                 </button>
 
                 <DropdownMenu>

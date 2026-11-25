@@ -121,6 +121,7 @@ class HandleInertiaRequests extends Middleware
                 'todayAttendance' => $todayAtt ? [
                     'id' => $todayAtt->id,
                     'mode' => $todayAtt->mode,
+                    'is_weekend' => (bool) $todayAtt->is_weekend,
                     'status' => $todayAtt->status,
                     'check_in_at' => $todayAtt->check_in_at?->toIso8601String(),
                     'check_out_at' => $todayAtt->check_out_at?->toIso8601String(),
