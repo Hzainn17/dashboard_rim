@@ -1054,13 +1054,15 @@ class ProjectController extends Controller
             ] : null,
             'daily_tasks_count' => $t->relationLoaded('dailyTasks') ? $t->dailyTasks->count() : 0,
             'daily_tasks' => $t->relationLoaded('dailyTasks')
-                ? $t->dailyTasks->take(10)->map(fn (DailyTask $dt): array => [
+                ? $t->dailyTasks->take(50)->map(fn (DailyTask $dt): array => [
                     'id' => $dt->id,
+                    'user_id' => $dt->user_id,
                     'title' => $dt->title,
                     'status' => $dt->status,
+                    'review_target' => $dt->review_target,
                     'notes' => $dt->notes,
                     'work_date' => $dt->work_date->format('Y-m-d'),
-                    'work_date_formatted' => $dt->work_date->translatedFormat('d M'),
+                    'work_date_formatted' => $dt->work_date->translatedFormat('d M Y'),
                     'user_name' => $dt->user?->name ?? 'Tim Studio',
                 ])->values()->all()
                 : [],

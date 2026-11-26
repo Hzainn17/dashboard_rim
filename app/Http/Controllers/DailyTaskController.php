@@ -284,7 +284,10 @@ class DailyTaskController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['in_progress', 'review', 'done', 'carried_over'])],
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
+            'project_id' => ['sometimes', 'nullable', 'integer', 'exists:projects,id'],
+            'project_task_id' => ['sometimes', 'nullable', 'integer', 'exists:project_tasks,id'],
+            'status' => ['sometimes', Rule::in(['in_progress', 'review', 'done', 'carried_over'])],
             'review_target' => ['nullable', Rule::in(['pm', 'owner'])],
             'notes' => ['nullable', 'string', 'max:1000'],
             'sync_kanban_status' => ['nullable', Rule::in(['in_progress', 'review', 'done'])],
@@ -300,7 +303,8 @@ class DailyTaskController extends Controller
             abort(403, 'Tugas ini ditujukan untuk review langsung oleh Owner (Super Admin).');
         }
 
-        $newStatus = $validated['status'];
+        $hasStatusChange = array_key_exists('status', $validated);
+        $newStatus = $validated['status'] ?? $dailyTask->status;
         $reviewTarget = $newStatus === 'review'
             ? ($validated['review_target'] ?? $dailyTask->review_target ?? 'pm')
             : null;
@@ -308,16 +312,50 @@ class DailyTaskController extends Controller
         $updateData = [
             'status' => $newStatus,
             'review_target' => $reviewTarget,
-            'completed_at' => $newStatus === 'done' ? now() : null,
+            'completed_at' => $newStatus === 'done' ? ($dailyTask->completed_at ?? now()) : null,
         ];
+
+        if (array_key_exists('title', $validated)) {
+            $updateData['title'] = trim($validated['title']);
+        }
 
         if ($request->has('notes')) {
             $updateData['notes'] = trim((string) ($validated['notes'] ?? '')) ?: null;
         }
 
+        if (array_key_exists('project_id', $validated) || array_key_exists('project_task_id', $validated)) {
+            $projectId = array_key_exists('project_id', $validated)
+                ? ($validated['project_id'] ? (int) $validated['project_id'] : null)
+                : $dailyTask->project_id;
+            $projectTaskId = array_key_exists('project_task_id', $validated)
+                ? ($validated['project_task_id'] ? (int) $validated['project_task_id'] : null)
+                : $dailyTask->project_task_id;
+
+            if ($projectTaskId) {
+                $parentKanban = ProjectTask::query()->with('project')->findOrFail($projectTaskId);
+                if ($parentKanban->project && ! $parentKanban->project->isAccessibleBy($user)) {
+                    abort(403, 'Anda tidak terdaftar pada proyek tersebut.');
+                }
+                $projectId = $parentKanban->project_id;
+            } elseif ($projectId) {
+                $project = Project::query()->findOrFail($projectId);
+                if (! $project->isAccessibleBy($user)) {
+                    abort(403, 'Anda tidak terdaftar pada proyek yang dipilih.');
+                }
+                if ($projectId !== $dailyTask->project_id) {
+                    $projectTaskId = null;
+                }
+            } else {
+                $projectTaskId = null;
+            }
+
+            $updateData['project_id'] = $projectId;
+            $updateData['project_task_id'] = $projectTaskId;
+        }
+
         $dailyTask->update($updateData);
 
-        if ($newStatus === 'review') {
+        if ($hasStatusChange && $newStatus === 'review') {
             $targetLabel = $reviewTarget === 'owner' ? 'Owner (Super Admin)' : 'PM / Lead';
             ActivityLog::record(
                 action: 'daily_task.review_requested',
@@ -344,7 +382,11 @@ class DailyTaskController extends Controller
             }
         }
 
-        return redirect()->back()->with('success', 'Status to-do harian berhasil diperbarui.');
+        $message = $hasStatusChange
+            ? 'Status to-do harian berhasil diperbarui.'
+            : 'To-do harian berhasil diperbarui.';
+
+        return redirect()->back()->with('success', $message);
     }
 
     /**

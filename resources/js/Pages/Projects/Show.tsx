@@ -13,6 +13,7 @@ import {
     CheckCircle2,
     ChevronLeft,
     ChevronRight,
+    Circle,
     Clock,
     Download,
     Edit3,
@@ -128,8 +129,10 @@ interface KanbanTaskItem {
     daily_tasks_count?: number;
     daily_tasks?: Array<{
         id: number;
+        user_id?: number;
         title: string;
         status: string;
+        review_target?: 'pm' | 'owner' | null;
         notes?: string | null;
         work_date: string;
         work_date_formatted: string;
@@ -390,7 +393,51 @@ export default function ProjectShow({
     // Modals
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<KanbanTaskItem | null>(null);
+    const [viewingTaskId, setViewingTaskId] = useState<number | null>(null);
+    const [quickSubtaskTitle, setQuickSubtaskTitle] = useState('');
+    const [addingQuickSubtask, setAddingQuickSubtask] = useState(false);
     const [taskColumnTarget, setTaskColumnTarget] = useState<KanbanTaskItem['status']>('todo');
+
+    const allKanbanTasksFlat = [
+        ...(kanban.todo || []),
+        ...(kanban.in_progress || []),
+        ...(kanban.review || []),
+        ...(kanban.done || []),
+    ];
+    const viewingTask =
+        viewingTaskId !== null
+            ? allKanbanTasksFlat.find((t) => t.id === viewingTaskId) ?? null
+            : null;
+    const viewingTaskStage = viewingTask?.stage_id
+        ? project.stages.find((s) => s.id === viewingTask.stage_id) ?? null
+        : null;
+
+    const handleQuickAddSubtask = (e: React.FormEvent, parentTask: KanbanTaskItem) => {
+        e.preventDefault();
+        if (!quickSubtaskTitle.trim()) return;
+        setAddingQuickSubtask(true);
+        router.post(
+            route('daily-tasks.store'),
+            {
+                title: quickSubtaskTitle.trim(),
+                project_id: project.id,
+                project_task_id: parentTask.id,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => setQuickSubtaskTitle(''),
+                onFinish: () => setAddingQuickSubtask(false),
+            },
+        );
+    };
+
+    const handleToggleSubtaskDone = (dt: { id: number; status: string }) => {
+        router.patch(
+            route('daily-tasks.update', dt.id),
+            { status: dt.status === 'done' ? 'in_progress' : 'done' },
+            { preserveScroll: true },
+        );
+    };
 
     const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -1088,7 +1135,16 @@ export default function ProjectShow({
                                                     key={task.id}
                                                     draggable
                                                     onDragStart={(e) => handleDragStart(e, task.id)}
-                                                    className="group relative flex flex-col gap-2 rounded-xl border bg-card p-3.5 shadow-xs transition hover:border-foreground/40 hover:shadow-md cursor-grab active:cursor-grabbing"
+                                                    onClick={() => setViewingTaskId(task.id)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            setViewingTaskId(task.id);
+                                                        }
+                                                    }}
+                                                    className="group relative flex flex-col gap-2 rounded-xl border bg-card p-3.5 shadow-xs transition hover:border-foreground/40 hover:shadow-md cursor-pointer active:cursor-grabbing"
                                                 >
                                                     {/* Top Card Info: Priority & Stage */}
                                                     <div className="flex items-center justify-between gap-1 text-[11px]">
@@ -1120,10 +1176,15 @@ export default function ProjectShow({
                                                     )}
 
                                                     {(task.daily_tasks_count ?? 0) > 0 && (
-                                                        <div className="rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-1.5 text-[10px]">
-                                                            <p className="font-semibold text-primary">
-                                                                {task.daily_tasks_count} sub-task harian tim
-                                                            </p>
+                                                        <div className="rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-1.5 text-[10px] transition group-hover:border-primary/35">
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <p className="font-semibold text-primary">
+                                                                    {task.daily_tasks_count} sub-task harian tim
+                                                                </p>
+                                                                <span className="text-[9px] font-semibold text-primary/80">
+                                                                    Lihat detail →
+                                                                </span>
+                                                            </div>
                                                             <ul className="mt-1 space-y-0.5 text-muted-foreground">
                                                                 {(task.daily_tasks ?? []).slice(0, 3).map((dt) => (
                                                                     <li key={dt.id} className="flex items-center justify-between gap-1.5">
@@ -1140,6 +1201,11 @@ export default function ProjectShow({
                                                                         </span>
                                                                     </li>
                                                                 ))}
+                                                                {(task.daily_tasks_count ?? 0) > 3 && (
+                                                                    <li className="text-[9px] font-medium text-primary/80">
+                                                                        +{(task.daily_tasks_count ?? 0) - 3} sub-task lainnya...
+                                                                    </li>
+                                                                )}
                                                             </ul>
                                                         </div>
                                                     )}
@@ -1190,7 +1256,10 @@ export default function ProjectShow({
                                                     </div>
 
                                                     {/* Quick 1-Click Status Move & Action Bar */}
-                                                    <div className="mt-1 flex items-center justify-between border-t border-dashed pt-1.5 opacity-90 transition group-hover:opacity-100">
+                                                    <div
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mt-1 flex items-center justify-between border-t border-dashed pt-1.5 opacity-90 transition group-hover:opacity-100"
+                                                    >
                                                         <div className="flex items-center gap-1">
                                                             {colKey !== 'todo' && (
                                                                 <button
@@ -1434,16 +1503,18 @@ export default function ProjectShow({
                                                                             >
                                                                                 {priorityConfig[task.priority]?.label}
                                                                             </span>
-                                                                            <span
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setViewingTaskId(task.id)}
                                                                                 className={cn(
-                                                                                    'truncate font-semibold',
+                                                                                    'truncate text-left font-semibold hover:text-primary hover:underline',
                                                                                     task.status === 'done'
                                                                                         ? 'line-through text-muted-foreground'
                                                                                         : 'text-foreground'
                                                                                 )}
                                                                             >
                                                                                 {task.title}
-                                                                            </span>
+                                                                            </button>
                                                                         </div>
 
                                                                         <div className="flex items-center gap-2 shrink-0">
@@ -2119,6 +2190,342 @@ export default function ProjectShow({
                     />
                 )}
             </div>
+
+            {/* MODAL DETAIL KARTU KANBAN & SUB-TASK HARIAN */}
+            {viewingTask && (
+                <div
+                    onClick={() => setViewingTaskId(null)}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl"
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-start justify-between gap-3 border-b px-6 py-4">
+                            <div className="min-w-0 space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                        className={cn(
+                                            'rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+                                            priorityConfig[viewingTask.priority]?.badge,
+                                        )}
+                                    >
+                                        Prioritas {priorityConfig[viewingTask.priority]?.label}
+                                    </span>
+                                    {viewingTask.stage_name && (
+                                        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                            Tahapan: {viewingTask.stage_name}
+                                        </span>
+                                    )}
+                                </div>
+                                <h3 className="text-lg font-bold leading-snug text-foreground">
+                                    {viewingTask.title}
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setViewingTaskId(null)}
+                                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                                <X className="size-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                            {/* Quick Meta Grid */}
+                            <div className="grid grid-cols-1 gap-3 rounded-xl border bg-muted/20 p-3.5 sm:grid-cols-3">
+                                <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                        Status Kanban
+                                    </p>
+                                    <select
+                                        value={viewingTask.status}
+                                        onChange={(e) =>
+                                            handleQuickMoveStatus(
+                                                viewingTask.id,
+                                                e.target.value as KanbanTaskItem['status'],
+                                            )
+                                        }
+                                        className={cn(
+                                            'mt-1 h-8 w-full rounded-lg border px-2 text-xs font-semibold outline-none',
+                                            kanbanColumnConfig[viewingTask.status]?.badge,
+                                        )}
+                                    >
+                                        <option value="todo">To Do</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="review">In Review</option>
+                                        <option value="done">Done</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                        Penanggung Jawab (PIC)
+                                    </p>
+                                    {viewingTask.assignee ? (
+                                        <div className="mt-1.5 flex items-center gap-2">
+                                            <div
+                                                className={cn(
+                                                    'flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full border text-[10px] font-bold',
+                                                    getAvatarTone(
+                                                        viewingTask.assignee.id,
+                                                        viewingTask.assignee.name,
+                                                    ),
+                                                )}
+                                            >
+                                                {viewingTask.assignee.photo_url ? (
+                                                    <img
+                                                        src={viewingTask.assignee.photo_url}
+                                                        alt={viewingTask.assignee.name}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    viewingTask.assignee.name.charAt(0)
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-xs font-semibold text-foreground">
+                                                    {viewingTask.assignee.name}
+                                                </p>
+                                                <p className="truncate text-[10px] text-muted-foreground">
+                                                    {viewingTask.assignee.position}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="mt-1.5 text-xs italic text-muted-foreground">
+                                            Belum ditentukan
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                        Deadline Tugas
+                                    </p>
+                                    <p
+                                        className={cn(
+                                            'mt-1.5 flex items-center gap-1.5 text-xs font-semibold',
+                                            viewingTask.is_overdue
+                                                ? 'text-rose-600'
+                                                : 'text-foreground',
+                                        )}
+                                    >
+                                        <Clock className="size-3.5" />
+                                        {viewingTask.due_date_formatted || 'Tanpa deadline'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Informasi Tahapan Desain Terkait */}
+                            {viewingTaskStage && (
+                                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs">
+                                    <p className="font-bold text-primary">
+                                        Info Tahapan: {viewingTaskStage.name}
+                                    </p>
+                                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                                        {viewingTaskStage.update_design_date_formatted && (
+                                            <span>
+                                                Deadline Update Desain:{' '}
+                                                <strong className="text-foreground">
+                                                    {viewingTaskStage.update_design_date_formatted}
+                                                </strong>
+                                            </span>
+                                        )}
+                                        {viewingTaskStage.client_response_date_formatted && (
+                                            <span>
+                                                Batas Respon Klien:{' '}
+                                                <strong className="text-foreground">
+                                                    {viewingTaskStage.client_response_date_formatted}
+                                                </strong>
+                                            </span>
+                                        )}
+                                    </div>
+                                    {viewingTaskStage.output_notes && (
+                                        <p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-foreground/85">
+                                            {viewingTaskStage.output_notes}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Deskripsi Lengkap */}
+                            <div>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    Deskripsi &amp; Detail Pekerjaan
+                                </h4>
+                                {viewingTask.description ? (
+                                    <p className="mt-1.5 whitespace-pre-line rounded-xl border bg-background p-3.5 text-xs leading-relaxed text-foreground sm:text-sm">
+                                        {viewingTask.description}
+                                    </p>
+                                ) : (
+                                    <p className="mt-1.5 text-xs italic text-muted-foreground">
+                                        Belum ada deskripsi tambahan pada tugas ini.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Sub-Task Harian Tim */}
+                            <div className="space-y-3 border-t pt-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                                            Sub-Task Harian Tim ({viewingTask.daily_tasks_count ?? 0})
+                                        </h4>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Seluruh aktivitas harian karyawan yang ditautkan ke kartu Kanban ini
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Quick Add Sub-Task right inside modal */}
+                                <form
+                                    onSubmit={(e) => handleQuickAddSubtask(e, viewingTask)}
+                                    className="flex gap-2"
+                                >
+                                    <input
+                                        type="text"
+                                        value={quickSubtaskTitle}
+                                        onChange={(e) => setQuickSubtaskTitle(e.target.value)}
+                                        placeholder="Tambah sub-task harian baru untuk kartu ini..."
+                                        className="h-9 flex-1 rounded-lg border bg-background px-3 text-xs outline-none focus-visible:border-ring"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={addingQuickSubtask || !quickSubtaskTitle.trim()}
+                                        className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                    >
+                                        <Plus className="size-3.5" />
+                                        Tambah
+                                    </button>
+                                </form>
+
+                                {(viewingTask.daily_tasks ?? []).length === 0 ? (
+                                    <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-6 text-center text-xs text-muted-foreground">
+                                        Belum ada sub-task harian yang ditautkan ke kartu ini.
+                                    </div>
+                                ) : (
+                                    <ul className="divide-y rounded-xl border bg-background">
+                                        {(viewingTask.daily_tasks ?? []).map((dt) => {
+                                            const isDtDone = dt.status === 'done';
+                                            const canToggle =
+                                                isOwnerOrLead || dt.user_id === auth.user.id;
+                                            const dtBadge =
+                                                dt.status === 'done'
+                                                    ? {
+                                                          label: 'Selesai',
+                                                          cls: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+                                                      }
+                                                    : dt.status === 'review'
+                                                      ? {
+                                                            label:
+                                                                dt.review_target === 'owner'
+                                                                    ? 'Review Owner'
+                                                                    : 'Review PM',
+                                                            cls: 'bg-purple-50 text-purple-800 ring-purple-200',
+                                                        }
+                                                      : dt.status === 'carried_over'
+                                                        ? {
+                                                              label: 'Lanjut Besok',
+                                                              cls: 'bg-amber-50 text-amber-800 ring-amber-200',
+                                                          }
+                                                        : {
+                                                              label: 'Dikerjakan',
+                                                              cls: 'bg-sky-50 text-sky-800 ring-sky-200',
+                                                          };
+
+                                            return (
+                                                <li
+                                                    key={dt.id}
+                                                    className="flex items-start justify-between gap-3 px-3.5 py-3 text-xs"
+                                                >
+                                                    <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                                                        <button
+                                                            type="button"
+                                                            disabled={!canToggle}
+                                                            onClick={() => handleToggleSubtaskDone(dt)}
+                                                            title={
+                                                                canToggle
+                                                                    ? isDtDone
+                                                                        ? 'Tandai dikerjakan lagi'
+                                                                        : 'Tandai selesai'
+                                                                    : 'Hanya pemilik tugas / PM yang dapat mengubah'
+                                                            }
+                                                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary disabled:opacity-50"
+                                                        >
+                                                            {isDtDone ? (
+                                                                <CheckCircle2 className="size-4 text-emerald-600" />
+                                                            ) : (
+                                                                <Circle className="size-4" />
+                                                            )}
+                                                        </button>
+                                                        <div className="min-w-0 flex-1 space-y-1">
+                                                            <p
+                                                                className={cn(
+                                                                    'font-medium leading-snug text-foreground',
+                                                                    isDtDone &&
+                                                                        'text-muted-foreground line-through',
+                                                                )}
+                                                            >
+                                                                {dt.title}
+                                                            </p>
+                                                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                                                <span className="font-medium text-foreground/80">
+                                                                    {dt.user_name}
+                                                                </span>
+                                                                <span>·</span>
+                                                                <span>{dt.work_date_formatted}</span>
+                                                            </div>
+                                                            {dt.notes && (
+                                                                <p className="text-[11px] italic text-muted-foreground">
+                                                                    “{dt.notes}”
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <span
+                                                        className={cn(
+                                                            'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1',
+                                                            dtBadge.cls,
+                                                        )}
+                                                    >
+                                                        {dtBadge.label}
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between border-t bg-muted/20 px-6 py-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const target = viewingTask;
+                                    setViewingTaskId(null);
+                                    openEditTaskModal(target);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+                            >
+                                <Edit3 className="size-3.5" />
+                                Edit Tugas
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewingTaskId(null)}
+                                className="rounded-lg bg-foreground px-4 py-1.5 text-xs font-semibold text-background hover:opacity-90"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL TAMBAH / EDIT TUGAS */}
             {isTaskModalOpen && (

@@ -318,4 +318,35 @@ class DailyTaskTest extends TestCase
         $this->assertSame('done', $task->fresh()->status);
         $this->assertNull($task->fresh()->review_target);
     }
+
+    public function test_employee_can_edit_daily_task_title_project_and_notes_without_deleting(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->create();
+        Employee::factory()->for($employee)->create(['department' => 'Perencanaan']);
+
+        $project = Project::factory()->create(['owner_id' => $admin->id]);
+        $project->members()->sync([$employee->id => ['role_in_project' => 'Drafter']]);
+
+        $task = DailyTask::query()->create([
+            'user_id' => $employee->id,
+            'work_date' => Carbon::today()->format('Y-m-d'),
+            'title' => 'uodate potongan lngtai 1',
+            'status' => 'in_progress',
+        ]);
+
+        $this->actingAs($employee)
+            ->patch(route('daily-tasks.update', $task), [
+                'title' => 'Update potongan lantai 1',
+                'project_id' => $project->id,
+                'notes' => 'Menyesuaikan elevasi plafond ruang keluarga',
+            ])
+            ->assertRedirect();
+
+        $fresh = $task->fresh();
+        $this->assertSame('Update potongan lantai 1', $fresh->title);
+        $this->assertSame($project->id, $fresh->project_id);
+        $this->assertSame('Menyesuaikan elevasi plafond ruang keluarga', $fresh->notes);
+        $this->assertSame('in_progress', $fresh->status);
+    }
 }

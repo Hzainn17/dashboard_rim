@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 import {
     ArrowUpRight,
+    Check,
     CheckCircle2,
     Circle,
     Clock,
     FolderKanban,
     ListTodo,
+    Pencil,
     Plus,
     Repeat,
     Trash2,
+    X,
 } from 'lucide-react';
 import { type Role } from '@/lib/studio-data';
 import { cn } from '@/lib/utils';
@@ -55,6 +58,12 @@ export function DailyFocusWidget({ role }: { role: Role }) {
     const [projectId, setProjectId] = useState<string>('');
     const [submitting, setSubmitting] = useState(false);
 
+    // Inline edit state (fix typos without deleting)
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editProjectId, setEditProjectId] = useState<string>('');
+    const [savingEdit, setSavingEdit] = useState(false);
+
     const doneCount = tasks.filter((t) => t.status === 'done').length;
 
     const handleQuickAdd = (e: React.FormEvent) => {
@@ -71,6 +80,36 @@ export function DailyFocusWidget({ role }: { role: Role }) {
                 preserveScroll: true,
                 onSuccess: () => setTitle(''),
                 onFinish: () => setSubmitting(false),
+            },
+        );
+    };
+
+    const startEditing = (task: DailyTaskItem) => {
+        setEditingId(task.id);
+        setEditTitle(task.title);
+        setEditProjectId(task.project_id ? String(task.project_id) : '');
+    };
+
+    const cancelEditing = () => {
+        setEditingId(null);
+        setEditTitle('');
+        setEditProjectId('');
+    };
+
+    const handleSaveEdit = (e: React.FormEvent, taskId: number) => {
+        e.preventDefault();
+        if (!editTitle.trim()) return;
+        setSavingEdit(true);
+        router.patch(
+            route('daily-tasks.update', taskId),
+            {
+                title: editTitle.trim(),
+                project_id: editProjectId ? Number(editProjectId) : null,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => cancelEditing(),
+                onFinish: () => setSavingEdit(false),
             },
         );
     };
@@ -164,89 +203,158 @@ export function DailyFocusWidget({ role }: { role: Role }) {
                     <>
                         <ul className="max-h-[260px] divide-y overflow-y-auto rounded-lg border bg-background/50">
                             {tasks.slice(0, 6).map((task) => {
-                            const isDone = task.status === 'done';
-                            const isReview = task.status === 'review';
-                            const isCarried = task.status === 'carried_over';
-                            return (
-                                <li
-                                    key={task.id}
-                                    className="flex items-start justify-between gap-3 px-3.5 py-2.5 text-xs"
-                                >
-                                    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleToggleDone(task)}
-                                            title={isDone ? 'Tandai belum selesai' : 'Tandai selesai'}
-                                            className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-primary"
-                                        >
-                                            {isDone ? (
-                                                <CheckCircle2 className="size-4 text-success" />
-                                            ) : (
-                                                <Circle className="size-4" />
-                                            )}
-                                        </button>
-                                        <div className="min-w-0 flex-1">
-                                            <p
-                                                className={cn(
-                                                    'font-medium leading-snug',
-                                                    isDone && 'text-muted-foreground line-through',
-                                                )}
+                                const isDone = task.status === 'done';
+                                const isReview = task.status === 'review';
+                                const isCarried = task.status === 'carried_over';
+                                const isEditing = editingId === task.id;
+
+                                if (isEditing) {
+                                    return (
+                                        <li key={task.id} className="bg-muted/30 px-3.5 py-2.5 text-xs">
+                                            <form
+                                                onSubmit={(e) => handleSaveEdit(e, task.id)}
+                                                className="flex flex-col gap-2 sm:flex-row sm:items-center"
                                             >
-                                                {task.title}
-                                            </p>
-                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                                                {task.project_name ? (
-                                                    <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px font-medium text-primary">
-                                                        <FolderKanban className="size-2.5" />
-                                                        {task.project_name}
-                                                    </span>
-                                                ) : (
-                                                    <span className="rounded bg-muted px-1.5 py-px">Umum</span>
-                                                )}
-                                                {task.project_task_title && (
-                                                    <span className="truncate rounded bg-accent px-1.5 py-px text-accent-foreground">
-                                                        Sub-task: {task.project_task_title}
-                                                    </span>
-                                                )}
-                                                {task.is_carried_over && (
-                                                    <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-px font-medium text-amber-800">
-                                                        <Repeat className="size-2.5" />
-                                                        Lanjutan Kemarin
-                                                    </span>
-                                                )}
-                                                {isReview && (
-                                                    <span
-                                                        className={cn(
-                                                            'inline-flex items-center gap-0.5 rounded px-1.5 py-px font-medium',
-                                                            task.review_target === 'owner'
-                                                                ? 'bg-indigo-100 text-indigo-800'
-                                                                : 'bg-purple-100 text-purple-800',
-                                                        )}
+                                                <select
+                                                    value={editProjectId}
+                                                    onChange={(e) => setEditProjectId(e.target.value)}
+                                                    aria-label="Ubah proyek to-do"
+                                                    className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus-visible:border-ring sm:w-44"
+                                                >
+                                                    <option value="">Umum / Internal Divisi</option>
+                                                    {projects.map((p) => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={editTitle}
+                                                    onChange={(e) => setEditTitle(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            cancelEditing();
+                                                        }
+                                                    }}
+                                                    placeholder="Perbaiki judul to-do..."
+                                                    className="h-8 flex-1 rounded-md border bg-background px-2.5 text-xs outline-none focus-visible:border-ring"
+                                                />
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        type="submit"
+                                                        disabled={savingEdit || !editTitle.trim()}
+                                                        title="Simpan perubahan"
+                                                        className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                                                     >
-                                                        <Clock className="size-2.5" />
-                                                        {task.review_target === 'owner'
-                                                            ? 'Review Owner'
-                                                            : 'Review PM'}
-                                                    </span>
+                                                        <Check className="size-3.5" />
+                                                        Simpan
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={cancelEditing}
+                                                        title="Batal edit"
+                                                        className="inline-flex h-8 items-center rounded-md border bg-background px-2 text-xs text-muted-foreground hover:bg-muted"
+                                                    >
+                                                        <X className="size-3.5" />
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </li>
+                                    );
+                                }
+
+                                return (
+                                    <li
+                                        key={task.id}
+                                        className="flex items-start justify-between gap-3 px-3.5 py-2.5 text-xs"
+                                    >
+                                        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleDone(task)}
+                                                title={isDone ? 'Tandai belum selesai' : 'Tandai selesai'}
+                                                className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                                            >
+                                                {isDone ? (
+                                                    <CheckCircle2 className="size-4 text-success" />
+                                                ) : (
+                                                    <Circle className="size-4" />
                                                 )}
-                                                {isCarried && (
-                                                    <span className="rounded bg-amber-50 px-1.5 py-px text-amber-700">
-                                                        Dilanjutkan Besok
-                                                    </span>
-                                                )}
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                                <p
+                                                    className={cn(
+                                                        'font-medium leading-snug',
+                                                        isDone && 'text-muted-foreground line-through',
+                                                    )}
+                                                >
+                                                    {task.title}
+                                                </p>
+                                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                                    {task.project_name ? (
+                                                        <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-px font-medium text-primary">
+                                                            <FolderKanban className="size-2.5" />
+                                                            {task.project_name}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="rounded bg-muted px-1.5 py-px">Umum</span>
+                                                    )}
+                                                    {task.project_task_title && (
+                                                        <span className="truncate rounded bg-accent px-1.5 py-px text-accent-foreground">
+                                                            Sub-task: {task.project_task_title}
+                                                        </span>
+                                                    )}
+                                                    {task.is_carried_over && (
+                                                        <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-px font-medium text-amber-800">
+                                                            <Repeat className="size-2.5" />
+                                                            Lanjutan Kemarin
+                                                        </span>
+                                                    )}
+                                                    {isReview && (
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex items-center gap-0.5 rounded px-1.5 py-px font-medium',
+                                                                task.review_target === 'owner'
+                                                                    ? 'bg-indigo-100 text-indigo-800'
+                                                                    : 'bg-purple-100 text-purple-800',
+                                                            )}
+                                                        >
+                                                            <Clock className="size-2.5" />
+                                                            {task.review_target === 'owner'
+                                                                ? 'Review Owner'
+                                                                : 'Review PM'}
+                                                        </span>
+                                                    )}
+                                                    {isCarried && (
+                                                        <span className="rounded bg-amber-50 px-1.5 py-px text-amber-700">
+                                                            Dilanjutkan Besok
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDelete(task)}
-                                        title="Hapus to-do"
-                                        className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-                                    >
-                                        <Trash2 className="size-3.5" />
-                                    </button>
-                                </li>
-                            );
+                                        <div className="flex shrink-0 items-center gap-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => startEditing(task)}
+                                                title="Edit teks to-do"
+                                                className="rounded p-1 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                                            >
+                                                <Pencil className="size-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDelete(task)}
+                                                title="Hapus to-do"
+                                                className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                                            >
+                                                <Trash2 className="size-3.5" />
+                                            </button>
+                                        </div>
+                                    </li>
+                                );
                             })}
                         </ul>
                         {tasks.length > 6 && (

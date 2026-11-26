@@ -14,6 +14,7 @@ import {
     History,
     ListTodo,
     MessageSquare,
+    Pencil,
     Plus,
     Repeat,
     Send,
@@ -133,6 +134,14 @@ export default function DailyTasksIndex({
     const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
     const [editingNoteText, setEditingNoteText] = useState('');
 
+    // Editing full daily task inline (fix typos / project / notes without deleting)
+    const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+    const [editTaskTitle, setEditTaskTitle] = useState('');
+    const [editTaskProjectId, setEditTaskProjectId] = useState('');
+    const [editTaskKanbanId, setEditTaskKanbanId] = useState('');
+    const [editTaskNotes, setEditTaskNotes] = useState('');
+    const [savingTaskEdit, setSavingTaskEdit] = useState(false);
+
     // PM Assign-to-staff modal
     const [assignTarget, setAssignTarget] = useState<TeamMemberBoard | null>(null);
     const [assignProjectId, setAssignProjectId] = useState('');
@@ -150,6 +159,48 @@ export default function DailyTasksIndex({
         () => accessibleProjects.find((p) => String(p.id) === assignProjectId) ?? null,
         [accessibleProjects, assignProjectId],
     );
+
+    const editTaskProjectObj = useMemo(
+        () => accessibleProjects.find((p) => String(p.id) === editTaskProjectId) ?? null,
+        [accessibleProjects, editTaskProjectId],
+    );
+
+    const startEditingTask = (task: DailyTaskItem) => {
+        setEditingNoteId(null);
+        setEditingTaskId(task.id);
+        setEditTaskTitle(task.title);
+        setEditTaskProjectId(task.project_id ? String(task.project_id) : '');
+        setEditTaskKanbanId(task.project_task_id ? String(task.project_task_id) : '');
+        setEditTaskNotes(task.notes ?? '');
+    };
+
+    const cancelEditingTask = () => {
+        setEditingTaskId(null);
+        setEditTaskTitle('');
+        setEditTaskProjectId('');
+        setEditTaskKanbanId('');
+        setEditTaskNotes('');
+    };
+
+    const handleSaveTaskEdit = (e: React.FormEvent, taskId: number) => {
+        e.preventDefault();
+        if (!editTaskTitle.trim()) return;
+        setSavingTaskEdit(true);
+        router.patch(
+            route('daily-tasks.update', taskId),
+            {
+                title: editTaskTitle.trim(),
+                project_id: editTaskProjectId ? Number(editTaskProjectId) : null,
+                project_task_id: editTaskKanbanId ? Number(editTaskKanbanId) : null,
+                notes: editTaskNotes.trim() || null,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => cancelEditingTask(),
+                onFinish: () => setSavingTaskEdit(false),
+            },
+        );
+    };
 
     const filteredTeamBoard = useMemo(() => {
         if (teamFilter === 'review') {
@@ -999,6 +1050,109 @@ export default function DailyTasksIndex({
                                             .map((task) => {
                                             const st = statusConfig[task.status] ?? statusConfig.in_progress;
                                             const isDone = task.status === 'done';
+
+                                            if (editingTaskId === task.id) {
+                                                return (
+                                                    <li key={task.id} className="bg-muted/30 px-5 py-4">
+                                                        <form
+                                                            onSubmit={(e) => handleSaveTaskEdit(e, task.id)}
+                                                            className="flex flex-col gap-2.5"
+                                                        >
+                                                            <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                                                                <span>Edit To-Do Harian</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={cancelEditingTask}
+                                                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                                >
+                                                                    <X className="size-3.5" />
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 gap-2 md:grid-cols-12">
+                                                                <div className="md:col-span-3">
+                                                                    <select
+                                                                        value={editTaskProjectId}
+                                                                        onChange={(e) => {
+                                                                            setEditTaskProjectId(e.target.value);
+                                                                            setEditTaskKanbanId('');
+                                                                        }}
+                                                                        aria-label="Ubah proyek"
+                                                                        className="h-9 w-full rounded-lg border bg-background px-2.5 text-xs outline-none focus-visible:border-ring"
+                                                                    >
+                                                                        <option value="">Umum / Internal Divisi</option>
+                                                                        {accessibleProjects.map((p) => (
+                                                                            <option key={p.id} value={p.id}>
+                                                                                {p.name}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                {editTaskProjectObj && editTaskProjectObj.tasks.length > 0 && (
+                                                                    <div className="md:col-span-3">
+                                                                        <select
+                                                                            value={editTaskKanbanId}
+                                                                            onChange={(e) => setEditTaskKanbanId(e.target.value)}
+                                                                            aria-label="Ubah kartu Kanban induk"
+                                                                            className="h-9 w-full rounded-lg border bg-background px-2.5 text-xs outline-none focus-visible:border-ring"
+                                                                        >
+                                                                            <option value="">Sub-task Kanban (Opsional)</option>
+                                                                            {editTaskProjectObj.tasks.map((t) => (
+                                                                                <option key={t.id} value={t.id}>
+                                                                                    {t.title}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                )}
+                                                                <div
+                                                                    className={
+                                                                        editTaskProjectObj && editTaskProjectObj.tasks.length > 0
+                                                                            ? 'md:col-span-6'
+                                                                            : 'md:col-span-9'
+                                                                    }
+                                                                >
+                                                                    <input
+                                                                        type="text"
+                                                                        required
+                                                                        autoFocus
+                                                                        value={editTaskTitle}
+                                                                        onChange={(e) => setEditTaskTitle(e.target.value)}
+                                                                        placeholder="Perbaiki judul aktivitas hari ini..."
+                                                                        className="h-9 w-full rounded-lg border bg-background px-3 text-xs outline-none focus-visible:border-ring"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editTaskNotes}
+                                                                    onChange={(e) => setEditTaskNotes(e.target.value)}
+                                                                    placeholder="Catatan singkat / kendala (opsional)"
+                                                                    className="h-8 flex-1 rounded-lg border bg-background px-3 text-xs outline-none focus-visible:border-ring"
+                                                                />
+                                                                <div className="flex items-center justify-end gap-1.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={cancelEditingTask}
+                                                                        className="h-8 rounded-lg border bg-background px-3 text-xs font-medium text-muted-foreground hover:bg-muted"
+                                                                    >
+                                                                        Batal
+                                                                    </button>
+                                                                    <button
+                                                                        type="submit"
+                                                                        disabled={savingTaskEdit || !editTaskTitle.trim()}
+                                                                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                                                    >
+                                                                        <Check className="size-3.5" />
+                                                                        {savingTaskEdit ? 'Menyimpan...' : 'Simpan'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </form>
+                                                    </li>
+                                                );
+                                            }
+
                                             return (
                                                 <li key={task.id} className="flex flex-col gap-2.5 px-5 py-4">
                                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1128,6 +1282,15 @@ export default function DailyTasksIndex({
                                                                         Review Kanban
                                                                     </button>
                                                                 )}
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => startEditingTask(task)}
+                                                                title="Edit judul / proyek to-do"
+                                                                className="inline-flex h-8 items-center gap-1 rounded-lg border bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                            >
+                                                                <Pencil className="size-3.5" />
+                                                            </button>
 
                                                             <button
                                                                 type="button"
