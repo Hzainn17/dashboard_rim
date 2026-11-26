@@ -19,6 +19,10 @@ import {
     X,
 } from 'lucide-react';
 import { AppShell } from '@/Components/dashboard/app-shell';
+import {
+    FieldScheduleCalendar,
+    type FieldScheduleItem,
+} from '@/Components/dashboard/field-schedule-calendar';
 import { MemberAvatar } from '@/Components/dashboard/member-avatar';
 import { isAdminRole } from '@/lib/studio-data';
 import { prepareWebImage } from '@/lib/image-upload';
@@ -61,6 +65,7 @@ interface TeamMemberOption {
 interface Props extends PageProps {
     section: 'field';
     projects: FieldProjectItem[];
+    fieldSchedules?: FieldScheduleItem[];
     metrics: {
         active_projects: number;
         retention_projects: number;
@@ -111,6 +116,7 @@ const STATUS_META: Record<
 
 export default function FieldProjectsIndex({
     projects,
+    fieldSchedules = [],
     metrics,
     teamMembers,
     filters,
@@ -321,6 +327,13 @@ export default function FieldProjectsIndex({
                         </div>
                     </div>
                 </div>
+
+                {/* Kalender Khusus Jadwal Lapangan & Perbaikan */}
+                <FieldScheduleCalendar
+                    schedules={fieldSchedules}
+                    projects={projects}
+                    teamMembers={teamMembers}
+                />
 
                 {/* Search & Status Filter */}
                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-3.5 shadow-2xs lg:flex-row lg:items-center lg:justify-between">

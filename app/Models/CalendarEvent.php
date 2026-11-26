@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 #[Fillable([
-    'title', 'description', 'location', 'type', 'start_at', 'end_at',
-    'is_all_day', 'created_by', 'project_id',
+    'title', 'description', 'checklist_items', 'location', 'type', 'start_at', 'end_at',
+    'is_all_day', 'is_completed', 'created_by', 'project_id',
 ])]
 class CalendarEvent extends Model
 {
@@ -29,6 +29,8 @@ class CalendarEvent extends Model
             'start_at' => 'datetime',
             'end_at' => 'datetime',
             'is_all_day' => 'boolean',
+            'is_completed' => 'boolean',
+            'checklist_items' => 'array',
         ];
     }
 

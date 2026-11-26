@@ -79,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Studio & Team Calendar
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::post('/calendar/events', [CalendarController::class, 'store'])->name('calendar.events.store');
+    Route::patch('/calendar/events/{event}/toggle', [CalendarController::class, 'toggleFieldSchedule'])->name('calendar.events.toggle');
     Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->name('calendar.events.destroy');
 
     // Daily To-Do & Team Work Tracker (Kerja Tim / Kerja Hari Ini)

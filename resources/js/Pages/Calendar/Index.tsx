@@ -29,7 +29,9 @@ interface CalendarEventItem {
     title: string;
     description?: string | null;
     location?: string | null;
-    type: 'meeting' | 'site_visit' | 'deadline' | 'milestone' | 'holiday' | 'other';
+    type: 'meeting' | 'site_visit' | 'field_schedule' | 'deadline' | 'milestone' | 'holiday' | 'other';
+    checklist_items?: Array<{ text: string; done: boolean }>;
+    is_completed?: boolean;
     start_at: string;
     end_at: string;
     date: string;
@@ -89,6 +91,12 @@ const eventTypeConfig: Record<
         dot: 'bg-emerald-600',
         badge: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         border: 'border-l-emerald-500',
+    },
+    field_schedule: {
+        label: 'Jadwal Lapangan',
+        dot: 'bg-amber-600',
+        badge: 'bg-amber-50 text-amber-900 border-amber-200',
+        border: 'border-l-amber-500',
     },
     deadline: {
         label: 'Deadline Proyek',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\Attendance;
+use App\Models\CalendarEvent;
 use App\Models\Project;
 use App\Models\ProjectUpdate;
 use App\Models\User;
@@ -123,9 +124,43 @@ class FieldProjectController extends Controller
             ])
             ->values();
 
+        $fieldSchedules = CalendarEvent::query()
+            ->with(['project:id,name,location', 'participants.employee', 'creator:id,name'])
+            ->where('type', 'field_schedule')
+            ->whereBetween('start_at', [
+                Carbon::today()->subMonth()->startOfMonth(),
+                Carbon::today()->addMonths(3)->endOfMonth(),
+            ])
+            ->orderBy('start_at')
+            ->get()
+            ->map(fn (CalendarEvent $e): array => [
+                'id' => $e->id,
+                'title' => $e->title,
+                'description' => $e->description,
+                'checklist_items' => $e->checklist_items ?? [],
+                'is_completed' => (bool) $e->is_completed,
+                'location' => $e->location ?: $e->project?->cleanLocation(),
+                'date' => $e->start_at->format('Y-m-d'),
+                'date_formatted' => $e->start_at->translatedFormat('l, d M Y'),
+                'time' => $e->is_all_day ? 'Sepanjang Hari' : $e->start_at->format('H:i'),
+                'is_all_day' => (bool) $e->is_all_day,
+                'project_id' => $e->project_id,
+                'project_name' => $e->project?->name,
+                'creator_id' => $e->created_by,
+                'creator_name' => $e->creator?->name ?? 'Admin',
+                'participants' => $e->participants->map(fn (User $u): array => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'photo_url' => $u->photo_url,
+                    'position' => $u->employee?->position ?? 'Tim Lapangan',
+                ])->values()->all(),
+            ])
+            ->values();
+
         return Inertia::render('FieldProjects/Index', [
             'section' => 'field',
             'projects' => $formattedProjects,
+            'fieldSchedules' => $fieldSchedules,
             'metrics' => [
                 'active_projects' => $allFieldProjects->whereIn('status', ['planning', 'ongoing', 'review'])->count(),
                 'retention_projects' => $allFieldProjects->where('status', 'retention')->count(),

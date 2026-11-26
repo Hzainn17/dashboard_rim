@@ -38,6 +38,8 @@ class CalendarController extends Controller
                 'raw_id' => $e->id,
                 'title' => $e->title,
                 'description' => $e->description,
+                'checklist_items' => $e->checklist_items ?? [],
+                'is_completed' => (bool) $e->is_completed,
                 'location' => $e->location,
                 'type' => $e->type,
                 'start_at' => $e->start_at->toIso8601String(),
@@ -90,10 +92,11 @@ class CalendarController extends Controller
                 ])->values()->all(),
             ]);
 
-        // Integrate Site Visit field attendance records
+        // Integrate Site Visit attendance ONLY for office staff (exclude routine daily field workers)
         $siteVisits = Attendance::query()
             ->with(['user.employee', 'siteVisitProject:id,name,location'])
             ->where('mode', 'site_visit')
+            ->whereHas('user', fn ($uq) => $uq->whereDoesntHave('employee', fn ($eq) => $eq->where('work_type', 'lapangan')))
             ->whereBetween('date', [$rangeStart->toDateString(), $rangeEnd->toDateString()])
             ->get()
             ->map(fn (Attendance $att) => [
@@ -260,8 +263,11 @@ class CalendarController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'checklist_items' => ['nullable', 'array'],
+            'checklist_items.*.text' => ['required_with:checklist_items', 'string', 'max:255'],
+            'checklist_items.*.done' => ['nullable', 'boolean'],
             'location' => ['nullable', 'string', 'max:255'],
-            'type' => ['required', Rule::in(['meeting', 'site_visit', 'deadline', 'milestone', 'holiday', 'other'])],
+            'type' => ['required', Rule::in(['meeting', 'site_visit', 'field_schedule', 'deadline', 'milestone', 'holiday', 'other'])],
             'start_date' => ['required', 'date'],
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
@@ -271,6 +277,15 @@ class CalendarController extends Controller
             'participant_ids' => ['nullable', 'array'],
             'participant_ids.*' => ['exists:users,id'],
         ]);
+
+        $checklistItems = collect($validated['checklist_items'] ?? [])
+            ->map(fn (array $item): array => [
+                'text' => trim($item['text']),
+                'done' => (bool) ($item['done'] ?? false),
+            ])
+            ->filter(fn (array $item): bool => $item['text'] !== '')
+            ->values()
+            ->all();
 
         $isAllDay = $request->boolean('is_all_day');
         $startTime = $isAllDay ? '00:00' : (! empty($validated['start_time']) ? $validated['start_time'] : '09:00');
@@ -282,11 +297,13 @@ class CalendarController extends Controller
         $event = CalendarEvent::query()->create([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
+            'checklist_items' => ! empty($checklistItems) ? $checklistItems : null,
             'location' => $validated['location'] ?? null,
             'type' => $validated['type'],
             'start_at' => $startAt,
             'end_at' => $endAt,
             'is_all_day' => $isAllDay,
+            'is_completed' => false,
             'created_by' => $user->id,
             'project_id' => $validated['project_id'] ?? null,
         ]);
@@ -295,14 +312,68 @@ class CalendarController extends Controller
             $event->participants()->attach($validated['participant_ids']);
         }
 
+        $actionName = $validated['type'] === 'field_schedule'
+            ? 'field_project.schedule_created'
+            : 'calendar.event_created';
+
         ActivityLog::record(
-            action: 'calendar.event_created',
-            description: "{$user->name} menambahkan agenda '{$event->title}' pada kalender",
+            action: $actionName,
+            description: $validated['type'] === 'field_schedule'
+                ? "{$user->name} menjadwalkan agenda lapangan '{$event->title}' ({$startAt->translatedFormat('d M Y')})"
+                : "{$user->name} menambahkan agenda '{$event->title}' pada kalender",
             reference: $event,
             user: $user,
         );
 
         return redirect()->back()->with('success', "Agenda '{$event->title}' berhasil ditambahkan ke kalender.");
+    }
+
+    /**
+     * Toggle completion or repair checklist items on a calendar event (/calendar/events/{event}/toggle).
+     */
+    public function toggleFieldSchedule(Request $request, CalendarEvent $event): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'is_completed' => ['sometimes', 'boolean'],
+            'checklist_index' => ['sometimes', 'integer', 'min:0'],
+        ]);
+
+        $items = $event->checklist_items ?? [];
+        $isCompleted = (bool) $event->is_completed;
+
+        if (array_key_exists('checklist_index', $validated)) {
+            $idx = (int) $validated['checklist_index'];
+            if (isset($items[$idx])) {
+                $items[$idx]['done'] = ! (bool) ($items[$idx]['done'] ?? false);
+                $isCompleted = count($items) > 0 && collect($items)->every(fn (array $i): bool => (bool) ($i['done'] ?? false));
+            }
+        } elseif (array_key_exists('is_completed', $validated)) {
+            $isCompleted = (bool) $validated['is_completed'];
+            if (! empty($items)) {
+                $items = collect($items)->map(fn (array $i): array => [
+                    ...$i,
+                    'done' => $isCompleted,
+                ])->all();
+            }
+        }
+
+        $event->update([
+            'checklist_items' => ! empty($items) ? $items : null,
+            'is_completed' => $isCompleted,
+        ]);
+
+        if ($event->type === 'field_schedule' && $isCompleted) {
+            ActivityLog::record(
+                action: 'field_project.schedule_completed',
+                description: "{$user->name} menandai jadwal lapangan '{$event->title}' selesai",
+                reference: $event,
+                user: $user,
+            );
+        }
+
+        return redirect()->back()->with('success', "Status jadwal '{$event->title}' diperbarui.");
     }
 
     /**

@@ -12,7 +12,9 @@ export type UnifiedCalendarEvent = {
     title: string;
     description?: string | null;
     location?: string | null;
-    type: 'meeting' | 'site_visit' | 'deadline' | 'milestone' | 'holiday' | 'other';
+    type: 'meeting' | 'site_visit' | 'field_schedule' | 'deadline' | 'milestone' | 'holiday' | 'other';
+    checklist_items?: Array<{ text: string; done: boolean }>;
+    is_completed?: boolean;
     start_at: string;
     end_at: string;
     date: string;
@@ -34,6 +36,7 @@ export const calendarEventStyle: Record<
 > = {
     meeting: { label: 'Meeting', dot: 'bg-foreground/60', chip: 'bg-secondary text-secondary-foreground' },
     site_visit: { label: 'Site Visit', dot: 'bg-success', chip: 'bg-success/10 text-success' },
+    field_schedule: { label: 'Jadwal Lapangan', dot: 'bg-amber-600', chip: 'bg-amber-100 text-amber-900' },
     milestone: { label: 'Review', dot: 'bg-warning', chip: 'bg-warning/15 text-amber-800' },
     deadline: { label: 'Deadline', dot: 'bg-primary', chip: 'bg-accent text-accent-foreground' },
     holiday: { label: 'Libur', dot: 'bg-destructive', chip: 'bg-destructive/10 text-destructive' },

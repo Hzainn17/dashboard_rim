@@ -230,11 +230,19 @@ class DashboardController extends Controller
 
         $dailyTaskProjects = DailyTaskController::getAccessibleProjectsWithKanbanTasks($user);
 
+        $upcomingFieldSchedules = $calendarEvents
+            ->where('type', 'field_schedule')
+            ->where('is_completed', false)
+            ->filter(fn (array $e): bool => $e['date'] >= $today->format('Y-m-d') && $e['date'] <= $today->copy()->addDays(7)->format('Y-m-d'))
+            ->take(5)
+            ->values();
+
         return Inertia::render('Dashboard', [
             'metrics' => $metrics,
             'todayAttendance' => $todayAttendance,
             'projects' => $projects,
             'calendarEvents' => $calendarEvents,
+            'upcomingFieldSchedules' => $upcomingFieldSchedules,
             'activities' => $activities,
             'officeSetting' => $officeSetting,
             'projectOptions' => $projectOptions,

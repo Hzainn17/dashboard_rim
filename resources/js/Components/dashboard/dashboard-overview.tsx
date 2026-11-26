@@ -1,5 +1,5 @@
-import { usePage } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, HardHat, MapPin } from 'lucide-react';
 import { type Role } from '@/lib/studio-data';
 import { PageProps } from '@/types';
 import { ActivityFeed, StudioAgenda } from './agenda-activity';
@@ -8,7 +8,7 @@ import { AttendanceWidget } from './attendance-widget';
 import { DailyFocusWidget } from './daily-focus-widget';
 import { ProjectGallery } from './project-gallery';
 import { QuickMetrics } from './quick-metrics';
-import { StudioCalendar } from './studio-calendar';
+import { StudioCalendar, type UnifiedCalendarEvent } from './studio-calendar';
 
 function greeting(date: Date | null) {
     if (!date) return 'Halo';
@@ -22,7 +22,9 @@ function greeting(date: Date | null) {
 }
 
 export function DashboardOverview({ role }: { role: Role }) {
-    const { auth, flash } = usePage<PageProps>().props;
+    const { auth, flash, upcomingFieldSchedules = [] } = usePage<
+        PageProps & { upcomingFieldSchedules?: UnifiedCalendarEvent[] }
+    >().props;
     const { now } = useAttendance();
     const displayName = auth?.user?.name || 'Tim Studio';
     const dateLabel = now
@@ -61,6 +63,65 @@ export function DashboardOverview({ role }: { role: Role }) {
             )}
 
             <QuickMetrics role={role} />
+
+            {upcomingFieldSchedules.length > 0 && (
+                <section className="rounded-xl border border-amber-200/90 bg-gradient-to-r from-amber-50/90 via-card to-orange-50/40 p-4 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="flex size-7 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+                                <HardHat className="size-4" />
+                            </span>
+                            <div>
+                                <h2 className="text-xs font-bold text-amber-950 sm:text-sm">
+                                    Pengingat Jadwal Lapangan &amp; Perbaikan Terdekat ({upcomingFieldSchedules.length})
+                                </h2>
+                                <p className="text-[11px] text-amber-900/75">
+                                    Agenda perbaikan / kunjungan lapangan dalam 7 hari ke depan
+                                </p>
+                            </div>
+                        </div>
+                        <Link
+                            href={route('projects.field')}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 hover:underline"
+                        >
+                            Buka Kalender Lapangan
+                            <ArrowUpRight className="size-3.5" />
+                        </Link>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {upcomingFieldSchedules.map((ev) => {
+                            const itemCount = ev.checklist_items?.length ?? 0;
+                            return (
+                                <Link
+                                    key={ev.id}
+                                    href={route('projects.field')}
+                                    className="flex flex-col gap-1 rounded-lg border border-amber-200/70 bg-white/90 px-3 py-2.5 text-xs transition hover:border-amber-400 hover:shadow-2xs"
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="font-mono text-[10px] font-bold text-amber-800">
+                                            {ev.date} · {ev.time}
+                                        </span>
+                                        {itemCount > 0 && (
+                                            <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-900">
+                                                {itemCount} item
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="truncate font-semibold text-foreground">
+                                        {ev.title}
+                                    </p>
+                                    {(ev.location || ev.project_name) && (
+                                        <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                                            <MapPin className="size-3 shrink-0 text-amber-700" />
+                                            {ev.project_name || ev.location}
+                                        </p>
+                                    )}
+                                </Link>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
 
             <DailyFocusWidget role={role} />
 
