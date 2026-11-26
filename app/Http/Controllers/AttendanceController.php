@@ -1190,6 +1190,7 @@ class AttendanceController extends Controller
                 'employee_code' => $u->employee?->employee_code ?? sprintf('RIM-%03d', $u->id),
                 'position' => $u->employee?->position ?? 'Arsitek',
                 'department' => $u->employee?->department ?? 'Perencanaan',
+                'work_type' => $u->employee?->work_type ?? 'kantor',
                 'present_days' => $presentDays,
                 'site_visit_days' => $siteVisitDays,
                 'kurang_jam_days' => $kurangJamDays,
@@ -1201,10 +1202,11 @@ class AttendanceController extends Controller
             ];
         });
 
-        $recentLogs = $monthAttendances->take(25)->map(fn (Attendance $att) => [
+        $recentLogs = $monthAttendances->map(fn (Attendance $att) => [
             ...$this->formatAttendance($att),
             'user_name' => $att->user?->name ?? 'Karyawan',
             'employee_code' => $att->user?->employee?->employee_code ?? 'RIM-000',
+            'site_visit_project_name' => $att->siteVisitProject?->name,
         ]);
 
         $overtimeLogs = Overtime::query()

@@ -1,13 +1,15 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import {
     Building2,
     CalendarCheck,
+    CalendarDays,
     CheckCircle2,
     ClockAlert,
     Download,
     HardHat,
+    List,
     PencilLine,
     SlidersHorizontal,
     Timer,
@@ -23,6 +25,7 @@ type RecapRow = {
     employee_code: string;
     position: string;
     department: string;
+    work_type?: 'kantor' | 'lapangan';
     present_days: number;
     site_visit_days: number;
     kurang_jam_days: number;
@@ -46,6 +49,7 @@ type RecentLog = {
     shortage_minutes: number;
     status: string;
     notes?: string | null;
+    site_visit_project_name?: string | null;
 };
 
 type OvertimeLog = {
@@ -114,8 +118,69 @@ export default function AttendanceMonitoring({
     const [adjustModalOpen, setAdjustModalOpen] = useState(false);
     const [adjustTab, setAdjustTab] = useState<'attendance' | 'overtime'>('attendance');
     const [logTab, setLogTab] = useState<'attendance' | 'overtime'>('attendance');
+    const [attendanceView, setAttendanceView] = useState<'calendar' | 'table'>('calendar');
+    const [selectedCell, setSelectedCell] = useState<{
+        employee: RecapRow;
+        dateStr: string;
+        dayLabel: string;
+        log: RecentLog | null;
+    } | null>(null);
 
     const todayStr = new Date().toISOString().slice(0, 10);
+
+    const weekdayShorts = ['Mg', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb'];
+    const daysInMonth = useMemo(() => {
+        const count = new Date(filters.year, filters.month, 0).getDate();
+        return Array.from({ length: count }, (_, idx) => {
+            const day = idx + 1;
+            const dateObj = new Date(filters.year, filters.month - 1, day);
+            const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dow = dateObj.getDay();
+            return {
+                day,
+                dateStr,
+                dow,
+                shortDay: weekdayShorts[dow],
+                isToday: dateStr === todayStr,
+            };
+        });
+    }, [filters.year, filters.month, todayStr]);
+
+    const attendanceLookup = useMemo(() => {
+        const map = new Map<string, RecentLog>();
+        for (const log of recentLogs) {
+            map.set(`${log.user_id}-${log.date}`, log);
+        }
+        return map;
+    }, [recentLogs]);
+
+    const getCellBadge = (log: RecentLog) => {
+        if (log.status === 'alpha') {
+            return { code: 'A', label: 'Alpha', cls: 'bg-rose-100 text-rose-800 ring-rose-300' };
+        }
+        if (log.status === 'izin') {
+            return { code: 'I', label: 'Izin', cls: 'bg-purple-100 text-purple-800 ring-purple-300' };
+        }
+        if (log.status === 'sakit') {
+            return { code: 'S', label: 'Sakit', cls: 'bg-purple-100 text-purple-800 ring-purple-300' };
+        }
+        if (log.status === 'cuti') {
+            return { code: 'C', label: 'Cuti', cls: 'bg-purple-100 text-purple-800 ring-purple-300' };
+        }
+        if (log.status === 'ganti_hari') {
+            return { code: 'GH', label: 'Ganti Hari', cls: 'bg-indigo-100 text-indigo-800 ring-indigo-300' };
+        }
+        if (log.status === 'kurang_jam') {
+            return { code: 'KJ', label: 'Kurang Jam', cls: 'bg-orange-100 text-orange-800 ring-orange-300' };
+        }
+        if (log.mode === 'site_visit' || log.status === 'site_visit') {
+            return { code: 'SV', label: 'Site Visit', cls: 'bg-amber-100 text-amber-900 ring-amber-300' };
+        }
+        if (log.mode === 'wfh') {
+            return { code: 'WFH', label: 'WFH', cls: 'bg-sky-100 text-sky-800 ring-sky-300' };
+        }
+        return { code: 'H', label: 'Hadir', cls: 'bg-emerald-100 text-emerald-800 ring-emerald-300' };
+    };
 
     // Form 1: Attendance Adjustment (with optional overtime minutes)
     const adjustForm = useForm({
@@ -152,9 +217,31 @@ export default function AttendanceMonitoring({
         task_description: '',
     });
 
-    const openAttendanceAdjust = (userId?: number) => {
-        if (userId) {
-            adjustForm.setData('user_id', userId);
+    const openAttendanceAdjust = (
+        userId?: number,
+        presetDate?: string,
+        existingLog?: RecentLog | null,
+    ) => {
+        if (existingLog) {
+            adjustForm.setData({
+                adjust_type: 'attendance',
+                user_id: existingLog.user_id,
+                date: existingLog.date,
+                mode: existingLog.mode,
+                status: existingLog.status as typeof adjustForm.data.status,
+                check_in_time: existingLog.check_in_time || '08:00',
+                check_out_time: existingLog.check_out_time || '17:00',
+                overtime_minutes: 0,
+                overtime_project_id: projects[0]?.id ?? '',
+                notes: existingLog.notes || '',
+            });
+        } else {
+            if (userId) {
+                adjustForm.setData('user_id', userId);
+            }
+            if (presetDate) {
+                adjustForm.setData('date', presetDate);
+            }
         }
         setAdjustTab('attendance');
         setAdjustModalOpen(true);
@@ -499,8 +586,8 @@ export default function AttendanceMonitoring({
                                             : 'text-muted-foreground hover:text-foreground',
                                     )}
                                 >
-                                    <PencilLine className="size-3.5" />
-                                    Log Kehadiran Harian ({recentLogs.length})
+                                    <CalendarDays className="size-3.5" />
+                                    Kalender Kehadiran ({monthNames[filters.month - 1]} {filters.year})
                                 </button>
                                 <button
                                     type="button"
@@ -518,52 +605,260 @@ export default function AttendanceMonitoring({
                                     Log Data Lemburan ({overtimeLogs.length})
                                 </button>
                             </div>
+
+                            {logTab === 'attendance' && (
+                                <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 text-[11px]">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttendanceView('calendar')}
+                                        className={cn(
+                                            'inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors',
+                                            attendanceView === 'calendar'
+                                                ? 'bg-card text-foreground shadow-2xs'
+                                                : 'text-muted-foreground hover:text-foreground',
+                                        )}
+                                    >
+                                        <CalendarDays className="size-3" />
+                                        Kalender
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttendanceView('table')}
+                                        className={cn(
+                                            'inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors',
+                                            attendanceView === 'table'
+                                                ? 'bg-card text-foreground shadow-2xs'
+                                                : 'text-muted-foreground hover:text-foreground',
+                                        )}
+                                    >
+                                        <List className="size-3" />
+                                        Tabel ({recentLogs.length})
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {logTab === 'attendance' ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
-                                    <thead>
-                                        <tr className="border-b bg-muted/40 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                                            <th className="px-5 py-3">Tanggal</th>
-                                            <th className="px-4 py-3">Karyawan</th>
-                                            <th className="px-4 py-3">Mode</th>
-                                            <th className="px-4 py-3">Jam Kerja</th>
-                                            <th className="px-4 py-3">Status</th>
-                                            <th className="px-5 py-3">Catatan / Audit Trail</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y">
-                                        {recentLogs.map((log) => (
-                                            <tr key={log.id} className="hover:bg-muted/30">
-                                                <td className="px-5 py-3 font-mono text-xs">{log.date}</td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    {log.user_name}{' '}
-                                                    <span className="font-mono text-xs text-muted-foreground">
-                                                        ({log.employee_code})
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-xs capitalize">
-                                                    {log.mode === 'wfh'
-                                                        ? 'WFH (Remote)'
-                                                        : log.mode.replace('_', ' ')}
-                                                </td>
-                                                <td className="px-4 py-3 font-mono text-xs">
-                                                    {log.check_in_time ?? '—'} s/d {log.check_out_time ?? '—'}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium capitalize text-accent-foreground">
-                                                        {log.status.replace('_', ' ')}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-3 text-xs text-muted-foreground">
-                                                    {log.notes || '—'}
-                                                </td>
+                            attendanceView === 'calendar' ? (
+                                <div className="flex flex-col">
+                                    {/* Legend Bar */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-5 py-2.5 text-[11px]">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex size-4 items-center justify-center rounded bg-emerald-100 text-[9px] font-bold text-emerald-800 ring-1 ring-emerald-300">
+                                                    H
+                                                </span>
+                                                Hadir
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex size-4 items-center justify-center rounded bg-amber-100 text-[9px] font-bold text-amber-900 ring-1 ring-amber-300">
+                                                    SV
+                                                </span>
+                                                Site Visit
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex h-4 items-center justify-center rounded bg-sky-100 px-1 text-[9px] font-bold text-sky-800 ring-1 ring-sky-300">
+                                                    WFH
+                                                </span>
+                                                WFH
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex size-4 items-center justify-center rounded bg-orange-100 text-[9px] font-bold text-orange-800 ring-1 ring-orange-300">
+                                                    KJ
+                                                </span>
+                                                Kurang Jam
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex size-4 items-center justify-center rounded bg-purple-100 text-[9px] font-bold text-purple-800 ring-1 ring-purple-300">
+                                                    I
+                                                </span>
+                                                Izin / Sakit / Cuti
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                                                <span className="inline-flex size-4 items-center justify-center rounded bg-rose-100 text-[9px] font-bold text-rose-800 ring-1 ring-rose-300">
+                                                    A
+                                                </span>
+                                                Alpha
+                                            </span>
+                                        </div>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Klik sel tanggal untuk lihat detail jam kerja &amp; koreksi absen
+                                        </span>
+                                    </div>
+
+                                    {/* Sticky-Column Calendar Matrix */}
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-left text-xs">
+                                            <thead>
+                                                <tr className="border-b bg-muted/40">
+                                                    <th className="sticky left-0 z-20 min-w-[190px] border-r bg-card px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                                                        Karyawan
+                                                    </th>
+                                                    {daysInMonth.map((d) => {
+                                                        const isWeekendCol = d.dow === 0 || d.dow === 6;
+                                                        return (
+                                                            <th
+                                                                key={d.dateStr}
+                                                                className={cn(
+                                                                    'min-w-[42px] border-r px-1 py-2 text-center font-medium last:border-r-0',
+                                                                    d.isToday
+                                                                        ? 'bg-primary text-primary-foreground'
+                                                                        : isWeekendCol
+                                                                          ? 'bg-muted/70 text-muted-foreground'
+                                                                          : 'text-foreground',
+                                                                )}
+                                                            >
+                                                                <div className="font-mono text-[11px] font-bold leading-none">
+                                                                    {d.day}
+                                                                </div>
+                                                                <div
+                                                                    className={cn(
+                                                                        'mt-0.5 text-[9px]',
+                                                                        d.isToday
+                                                                            ? 'text-primary-foreground/90'
+                                                                            : 'text-muted-foreground',
+                                                                    )}
+                                                                >
+                                                                    {d.shortDay}
+                                                                </div>
+                                                            </th>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {monthlyRecap.map((emp) => (
+                                                    <tr key={emp.user_id} className="group hover:bg-muted/20">
+                                                        <td className="sticky left-0 z-10 border-r bg-card px-4 py-2.5 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)] group-hover:bg-muted/20">
+                                                            <p className="truncate text-xs font-semibold text-foreground">
+                                                                {emp.name}
+                                                            </p>
+                                                            <p className="truncate text-[10px] text-muted-foreground">
+                                                                <span className="font-mono text-primary">
+                                                                    {emp.employee_code}
+                                                                </span>{' '}
+                                                                · {emp.position}
+                                                            </p>
+                                                        </td>
+                                                        {daysInMonth.map((d) => {
+                                                            const log =
+                                                                attendanceLookup.get(
+                                                                    `${emp.user_id}-${d.dateStr}`,
+                                                                ) ?? null;
+                                                            const isOffDay =
+                                                                emp.work_type === 'lapangan'
+                                                                    ? d.dow === 0
+                                                                    : d.dow === 0 || d.dow === 6;
+                                                            const badge = log ? getCellBadge(log) : null;
+
+                                                            return (
+                                                                <td
+                                                                    key={d.dateStr}
+                                                                    className={cn(
+                                                                        'border-r p-1 text-center align-middle last:border-r-0',
+                                                                        d.isToday
+                                                                            ? 'bg-primary/5'
+                                                                            : isOffDay
+                                                                              ? 'bg-muted/45'
+                                                                              : '',
+                                                                    )}
+                                                                >
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setSelectedCell({
+                                                                                employee: emp,
+                                                                                dateStr: d.dateStr,
+                                                                                dayLabel: `${d.shortDay}, ${d.day} ${monthNames[filters.month - 1]} ${filters.year}`,
+                                                                                log,
+                                                                            })
+                                                                        }
+                                                                        title={
+                                                                            log
+                                                                                ? `${emp.name} · ${badge?.label} (${log.check_in_time ?? '--:--'} - ${log.check_out_time ?? '--:--'})`
+                                                                                : `${emp.name} · ${d.dateStr} (Klik untuk input manual)`
+                                                                        }
+                                                                        className={cn(
+                                                                            'flex h-9 w-full flex-col items-center justify-center rounded-md transition',
+                                                                            badge
+                                                                                ? cn(
+                                                                                      'ring-1 hover:brightness-95',
+                                                                                      badge.cls,
+                                                                                  )
+                                                                                : 'text-muted-foreground/40 hover:bg-muted hover:text-foreground',
+                                                                        )}
+                                                                    >
+                                                                        {badge ? (
+                                                                            <>
+                                                                                <span className="text-[10px] font-bold leading-none">
+                                                                                    {badge.code}
+                                                                                </span>
+                                                                                {log?.check_in_time && (
+                                                                                    <span className="mt-0.5 font-mono text-[8px] leading-none opacity-80">
+                                                                                        {log.check_in_time}
+                                                                                    </span>
+                                                                                )}
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-[10px]">
+                                                                                {isOffDay ? '' : '·'}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead>
+                                            <tr className="border-b bg-muted/40 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                                                <th className="px-5 py-3">Tanggal</th>
+                                                <th className="px-4 py-3">Karyawan</th>
+                                                <th className="px-4 py-3">Mode</th>
+                                                <th className="px-4 py-3">Jam Kerja</th>
+                                                <th className="px-4 py-3">Status</th>
+                                                <th className="px-5 py-3">Catatan / Audit Trail</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {recentLogs.map((log) => (
+                                                <tr key={log.id} className="hover:bg-muted/30">
+                                                    <td className="px-5 py-3 font-mono text-xs">{log.date}</td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        {log.user_name}{' '}
+                                                        <span className="font-mono text-xs text-muted-foreground">
+                                                            ({log.employee_code})
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-xs capitalize">
+                                                        {log.mode === 'wfh'
+                                                            ? 'WFH (Remote)'
+                                                            : log.mode.replace('_', ' ')}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-mono text-xs">
+                                                        {log.check_in_time ?? '—'} s/d {log.check_out_time ?? '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium capitalize text-accent-foreground">
+                                                            {log.status.replace('_', ' ')}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-5 py-3 text-xs text-muted-foreground">
+                                                        {log.notes || '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm">
@@ -650,6 +945,141 @@ export default function AttendanceMonitoring({
                         )}
                     </section>
                 </div>
+
+                {/* Detail Popover Modal when clicking a Calendar Cell */}
+                {selectedCell && (
+                    <div
+                        onClick={() => setSelectedCell(null)}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
+                    >
+                        <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-2xl"
+                        >
+                            <div className="flex items-start justify-between border-b px-5 py-4">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        {selectedCell.dayLabel}
+                                    </p>
+                                    <h3 className="mt-0.5 text-base font-bold text-foreground">
+                                        {selectedCell.employee.name}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        {selectedCell.employee.employee_code} ·{' '}
+                                        {selectedCell.employee.position}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCell(null)}
+                                    className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-3.5 px-5 py-4 text-xs">
+                                {selectedCell.log ? (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/40 p-3">
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Mode Kerja</p>
+                                                <p className="mt-0.5 font-semibold capitalize text-foreground">
+                                                    {selectedCell.log.mode === 'wfh'
+                                                        ? 'WFH (Disetujui)'
+                                                        : selectedCell.log.mode === 'site_visit'
+                                                          ? 'Site Visit Lapangan'
+                                                          : 'Kantor Studio'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Status</p>
+                                                <span
+                                                    className={cn(
+                                                        'mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1',
+                                                        getCellBadge(selectedCell.log).cls,
+                                                    )}
+                                                >
+                                                    {getCellBadge(selectedCell.log).label}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Jam Masuk</p>
+                                                <p className="mt-0.5 font-mono font-semibold text-foreground">
+                                                    {selectedCell.log.check_in_time ?? '—'} WIB
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Jam Pulang</p>
+                                                <p className="mt-0.5 font-mono font-semibold text-foreground">
+                                                    {selectedCell.log.check_out_time ?? 'Belum check-out'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {selectedCell.log.site_visit_project_name && (
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-amber-950">
+                                                <p className="text-[10px] font-semibold uppercase text-amber-800">
+                                                    Lokasi Proyek Site Visit
+                                                </p>
+                                                <p className="mt-0.5 font-semibold">
+                                                    {selectedCell.log.site_visit_project_name}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {selectedCell.log.shortage_minutes > 0 && (
+                                            <p className="rounded-lg bg-orange-50 px-3 py-2 font-medium text-orange-800">
+                                                Kekurangan jam kerja: {selectedCell.log.shortage_minutes} menit
+                                            </p>
+                                        )}
+
+                                        <div>
+                                            <p className="text-[11px] font-medium text-muted-foreground">
+                                                Catatan / Audit Trail
+                                            </p>
+                                            <p className="mt-1 rounded-lg border bg-background p-2.5 text-foreground">
+                                                {selectedCell.log.notes || 'Tidak ada catatan tambahan.'}
+                                            </p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-6 text-center text-muted-foreground">
+                                        Belum ada data presensi tercatat pada tanggal ini.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between border-t bg-muted/20 px-5 py-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const cell = selectedCell;
+                                        setSelectedCell(null);
+                                        openAttendanceAdjust(
+                                            cell.employee.user_id,
+                                            cell.dateStr,
+                                            cell.log,
+                                        );
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                                >
+                                    <PencilLine className="size-3.5" />
+                                    {selectedCell.log
+                                        ? 'Koreksi Absen Tanggal Ini'
+                                        : 'Input Absen / Izin Manual'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCell(null)}
+                                    className="rounded-lg border bg-background px-3.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                                >
+                                    Tutup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Unified Modal: Koreksi Kehadiran Harian & Koreksi Data Lemburan */}
                 {adjustModalOpen && (
