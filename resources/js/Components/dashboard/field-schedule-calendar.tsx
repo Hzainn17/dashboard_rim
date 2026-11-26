@@ -230,17 +230,17 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
 
     return (
         <section className="overflow-hidden rounded-2xl border border-amber-200/80 bg-card shadow-2xs">
-            {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-gradient-to-r from-amber-50/80 via-card to-orange-50/40 px-5 py-4">
-                <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                        <CalendarDays className="size-4.5" />
+            {/* Compact Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-b bg-gradient-to-r from-amber-50/80 via-card to-orange-50/40 px-4 py-3">
+                <div className="flex items-center gap-2">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+                        <CalendarDays className="size-4" />
                     </div>
                     <div>
-                        <h2 className="text-sm font-bold text-foreground sm:text-base">
+                        <h2 className="text-sm font-bold text-foreground">
                             Kalender Jadwal Lapangan &amp; Perbaikan
                         </h2>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                             Sinkron otomatis dengan Kalender Studio &amp; pengingat Dashboard Owner
                         </p>
                     </div>
@@ -254,9 +254,9 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
                             className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                             aria-label="Bulan sebelumnya"
                         >
-                            <ChevronLeft className="size-4" />
+                            <ChevronLeft className="size-3.5" />
                         </button>
-                        <span className="min-w-[110px] px-2 text-center font-semibold capitalize">
+                        <span className="min-w-[100px] px-1.5 text-center text-xs font-semibold capitalize">
                             {monthLabel}
                         </span>
                         <button
@@ -265,28 +265,28 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
                             className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                             aria-label="Bulan berikutnya"
                         >
-                            <ChevronRight className="size-4" />
+                            <ChevronRight className="size-3.5" />
                         </button>
                     </div>
 
                     <button
                         type="button"
                         onClick={() => openCreateModal()}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white shadow-2xs transition hover:bg-amber-700"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-amber-700"
                     >
                         <Plus className="size-3.5" />
-                        Tambah Jadwal Lapangan
+                        Tambah Jadwal
                     </button>
                 </div>
             </div>
 
-            {/* Body: Left Calendar Grid + Right Schedule List */}
+            {/* Compact Body: Left Mini-Calendar (5 cols) + Right Schedule List (7 cols) */}
             <div className="grid grid-cols-1 divide-y lg:grid-cols-12 lg:divide-x lg:divide-y-0">
-                {/* Calendar Grid */}
-                <div className="p-4 lg:col-span-7">
-                    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-muted-foreground">
+                {/* Mini Calendar Grid */}
+                <div className="p-3.5 lg:col-span-5">
+                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-muted-foreground">
                         {weekdays.map((wd) => (
-                            <div key={wd} className="py-1">
+                            <div key={wd} className="py-0.5">
                                 {wd}
                             </div>
                         ))}
@@ -295,60 +295,51 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
                     <div className="mt-1 grid grid-cols-7 gap-1">
                         {cells.map((day, idx) => {
                             if (day === null) {
-                                return <div key={`empty-${idx}`} className="h-16 rounded-lg bg-muted/20" />;
+                                return <div key={`empty-${idx}`} className="h-9 rounded-md bg-muted/15" />;
                             }
 
                             const key = toKey(view.y, view.m, day);
                             const daySchedules = byDate.get(key) ?? [];
                             const isToday = key === todayKey;
                             const isSelected = selectedDate === key;
+                            const hasPending = daySchedules.some((s) => !s.is_completed);
 
                             return (
                                 <button
                                     key={key}
                                     type="button"
                                     onClick={() => setSelectedDate(isSelected ? null : key)}
+                                    title={
+                                        daySchedules.length > 0
+                                            ? daySchedules.map((s) => s.title).join(', ')
+                                            : undefined
+                                    }
                                     className={cn(
-                                        'flex h-16 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition',
+                                        'relative flex h-9 flex-col items-center justify-center rounded-md border text-xs transition',
                                         isSelected
-                                            ? 'border-amber-500 bg-amber-50/90 ring-2 ring-amber-500/20'
+                                            ? 'border-amber-500 bg-amber-100/80 font-bold text-amber-950 ring-1 ring-amber-500/30'
                                             : isToday
-                                              ? 'border-amber-300 bg-amber-50/40'
-                                              : 'border-border/70 bg-background hover:border-amber-300 hover:bg-muted/30',
+                                              ? 'border-amber-400 bg-amber-50 font-bold text-amber-900'
+                                              : daySchedules.length > 0
+                                                ? 'border-amber-200/80 bg-amber-50/40 font-semibold text-foreground hover:border-amber-400'
+                                                : 'border-transparent bg-background text-foreground/80 hover:border-border hover:bg-muted/40',
                                     )}
                                 >
-                                    <span
-                                        className={cn(
-                                            'inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold',
-                                            isToday
-                                                ? 'bg-amber-600 text-white'
-                                                : 'text-foreground',
-                                        )}
-                                    >
-                                        {day}
-                                    </span>
-
+                                    <span className="leading-none">{day}</span>
                                     {daySchedules.length > 0 && (
-                                        <div className="flex w-full flex-col gap-0.5 overflow-hidden">
-                                            {daySchedules.slice(0, 2).map((s) => (
-                                                <span
-                                                    key={s.id}
-                                                    className={cn(
-                                                        'block truncate rounded px-1 py-px text-[9px] font-semibold',
-                                                        s.is_completed
-                                                            ? 'bg-emerald-100 text-emerald-800 line-through'
-                                                            : 'bg-amber-100 text-amber-900',
-                                                    )}
-                                                >
-                                                    {s.title}
-                                                </span>
-                                            ))}
-                                            {daySchedules.length > 2 && (
-                                                <span className="text-[9px] font-semibold text-amber-700">
-                                                    +{daySchedules.length - 2} lagi
+                                        <span className="mt-1 flex items-center gap-0.5">
+                                            <span
+                                                className={cn(
+                                                    'size-1.5 rounded-full',
+                                                    hasPending ? 'bg-amber-600' : 'bg-emerald-600',
+                                                )}
+                                            />
+                                            {daySchedules.length > 1 && (
+                                                <span className="text-[8px] font-bold leading-none text-amber-800">
+                                                    {daySchedules.length}
                                                 </span>
                                             )}
-                                        </div>
+                                        </span>
                                     )}
                                 </button>
                             );
@@ -357,8 +348,8 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
                 </div>
 
                 {/* Right Panel: Selected Date or Upcoming Field Schedules */}
-                <div className="flex flex-col p-4 lg:col-span-5">
-                    <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex flex-col p-3.5 lg:col-span-7">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
                         <div>
                             <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
                                 {selectedDate ? `Jadwal Tanggal ${selectedDate}` : 'Jadwal Lapangan Terdekat'}
@@ -388,17 +379,17 @@ export function FieldScheduleCalendar({ schedules, projects, teamMembers }: Prop
                     </div>
 
                     {visibleSchedules.length === 0 ? (
-                        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-4 py-10 text-center">
-                            <Wrench className="size-6 text-muted-foreground/60" />
-                            <p className="mt-2 text-xs font-semibold text-foreground">
+                        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-4 py-6 text-center">
+                            <Wrench className="size-5 text-muted-foreground/60" />
+                            <p className="mt-1.5 text-xs font-semibold text-foreground">
                                 Belum ada jadwal lapangan
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                Klik &ldquo;Tambah Jadwal Lapangan&rdquo; untuk mencatat jadwal perbaikan (misal: Jatinangor hari Sabtu).
+                                Klik &ldquo;Tambah Jadwal&rdquo; untuk mencatat jadwal perbaikan (misal: Jatinangor hari Sabtu).
                             </p>
                         </div>
                     ) : (
-                        <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                        <div className="max-h-[240px] space-y-2.5 overflow-y-auto pr-1">
                             {visibleSchedules.map((schedule) => {
                                 const canDelete = isAdmin || schedule.creator_id === auth.user.id;
                                 const doneItems = schedule.checklist_items.filter((i) => i.done).length;
