@@ -18,6 +18,7 @@ import {
     X,
 } from 'lucide-react';
 import { AppShell } from '@/Components/dashboard/app-shell';
+import { CurrencyInput } from '@/Components/CurrencyInput';
 import { cn } from '@/lib/utils';
 import { PageProps } from '@/types';
 
@@ -99,11 +100,17 @@ interface QuoteRecord {
     survey_fee: number;
     survey_mode: 'excluded' | 'separate_invoice' | 'included';
     survey_paid_at?: string | null;
+    payment_scheme_mode?: 'percent' | 'fixed';
     dp_percent: number;
     t1_percent: number;
     t2_percent: number;
     t3_percent: number;
     t4_percent: number;
+    dp_amount?: number;
+    t1_amount?: number;
+    t2_amount?: number;
+    t3_amount?: number;
+    t4_amount?: number;
     dp_paid_at?: string | null;
     t1_paid_at?: string | null;
     t2_paid_at?: string | null;
@@ -212,11 +219,17 @@ export default function PlanningDocumentsIndex({
         discount_value: 0,
         survey_fee: 0,
         survey_mode: 'excluded' as 'excluded' | 'separate_invoice' | 'included',
+        payment_scheme_mode: 'percent' as 'percent' | 'fixed',
         dp_percent: 35,
         t1_percent: 35,
         t2_percent: 30,
         t3_percent: 0,
         t4_percent: 0,
+        dp_amount: 0,
+        t1_amount: 0,
+        t2_amount: 0,
+        t3_amount: 0,
+        t4_amount: 0,
         status: 'follow_up' as 'follow_up' | 'progress' | 'done' | 'cancelled',
         intro_notes: '',
         notes: '',
@@ -262,11 +275,17 @@ export default function PlanningDocumentsIndex({
             discount_value: 0,
             survey_fee: kind === 'survey_only' ? 500000 : 0,
             survey_mode: kind === 'survey_only' ? 'separate_invoice' : 'excluded',
+            payment_scheme_mode: 'percent',
             dp_percent: kind === 'survey_only' ? 0 : 35,
             t1_percent: kind === 'survey_only' ? 0 : 35,
             t2_percent: kind === 'survey_only' ? 0 : 30,
             t3_percent: 0,
             t4_percent: 0,
+            dp_amount: 0,
+            t1_amount: 0,
+            t2_amount: 0,
+            t3_amount: 0,
+            t4_amount: 0,
             status: 'follow_up',
             intro_notes: '',
             notes: '',
@@ -294,11 +313,17 @@ export default function PlanningDocumentsIndex({
             discount_value: 0,
             survey_fee: 0,
             survey_mode: 'excluded',
+            payment_scheme_mode: 'percent',
             dp_percent: 100,
             t1_percent: 0,
             t2_percent: 0,
             t3_percent: 0,
             t4_percent: 0,
+            dp_amount: 0,
+            t1_amount: 0,
+            t2_amount: 0,
+            t3_amount: 0,
+            t4_amount: 0,
             status: 'follow_up',
             intro_notes: '',
             notes: `Adendum dari penawaran #${parent.client_number_formatted}`,
@@ -336,11 +361,17 @@ export default function PlanningDocumentsIndex({
             discount_value: q.discount_value,
             survey_fee: q.survey_fee,
             survey_mode: q.survey_mode,
+            payment_scheme_mode: q.payment_scheme_mode ?? 'percent',
             dp_percent: q.dp_percent,
             t1_percent: q.t1_percent,
             t2_percent: q.t2_percent,
             t3_percent: q.t3_percent,
             t4_percent: q.t4_percent,
+            dp_amount: q.dp_amount ?? 0,
+            t1_amount: q.t1_amount ?? 0,
+            t2_amount: q.t2_amount ?? 0,
+            t3_amount: q.t3_amount ?? 0,
+            t4_amount: q.t4_amount ?? 0,
             status: q.status,
             intro_notes: q.intro_notes ?? '',
             notes: q.notes ?? '',
@@ -503,6 +534,8 @@ export default function PlanningDocumentsIndex({
                 surveyAmount: fee,
                 contract: fee,
                 totalPercent: 100,
+                totalFixedTermin: 0,
+                fixedDiff: 0,
             };
         }
         const subtotal = form.data.items.reduce((sum, item) => {
@@ -538,6 +571,13 @@ export default function PlanningDocumentsIndex({
             (Number(form.data.t2_percent) || 0) +
             (Number(form.data.t3_percent) || 0) +
             (Number(form.data.t4_percent) || 0);
+        const totalFixedTermin =
+            (Number(form.data.dp_amount) || 0) +
+            (Number(form.data.t1_amount) || 0) +
+            (Number(form.data.t2_amount) || 0) +
+            (Number(form.data.t3_amount) || 0) +
+            (Number(form.data.t4_amount) || 0);
+        const fixedDiff = effectiveDesign - totalFixedTermin;
 
         return {
             subtotal,
@@ -548,6 +588,8 @@ export default function PlanningDocumentsIndex({
             surveyAmount,
             contract,
             totalPercent,
+            totalFixedTermin,
+            fixedDiff,
         };
     }, [form.data]);
 
@@ -1524,15 +1566,14 @@ export default function PlanningDocumentsIndex({
                                                     <label className="mb-0.5 block text-[10px] font-semibold text-muted-foreground">
                                                         Harga Satuan (Rp)
                                                     </label>
-                                                    <input
-                                                        type="number"
+                                                    <CurrencyInput
                                                         value={item.unit_price}
-                                                        onChange={(e) =>
+                                                        onChange={(val) =>
                                                             updateLineItem(idx, {
-                                                                unit_price: Number(e.target.value) || 0,
+                                                                unit_price: val,
                                                             })
                                                         }
-                                                        className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                                                        className="h-8 rounded-md"
                                                     />
                                                 </div>
                                                 <div className="flex items-end justify-end sm:col-span-1">
@@ -1575,12 +1616,9 @@ export default function PlanningDocumentsIndex({
                                     <label className="block font-semibold text-foreground">
                                         Biaya Survey Lokasi (Rp)
                                     </label>
-                                    <input
-                                        type="number"
-                                        min={0}
+                                    <CurrencyInput
                                         value={form.data.survey_fee}
-                                        onChange={(e) => {
-                                            const fee = Number(e.target.value) || 0;
+                                        onChange={(fee) => {
                                             form.setData((prev) => ({
                                                 ...prev,
                                                 survey_fee: fee,
@@ -1592,7 +1630,6 @@ export default function PlanningDocumentsIndex({
                                                           : prev.survey_mode,
                                             }));
                                         }}
-                                        className="h-9 w-full rounded-lg border bg-background px-3 outline-none"
                                     />
                                     {form.data.document_kind !== 'survey_only' && (
                                         <select
@@ -1639,19 +1676,28 @@ export default function PlanningDocumentsIndex({
                                                 <option value="percent">Persen (%)</option>
                                                 <option value="fixed">Nominal (Rp)</option>
                                             </select>
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                disabled={form.data.discount_type === 'none'}
-                                                value={form.data.discount_value}
-                                                onChange={(e) =>
-                                                    form.setData(
-                                                        'discount_value',
-                                                        Number(e.target.value) || 0,
-                                                    )
-                                                }
-                                                className="h-9 rounded-lg border bg-background px-2.5 text-xs disabled:opacity-50"
-                                            />
+                                            {form.data.discount_type === 'fixed' ? (
+                                                <CurrencyInput
+                                                    value={form.data.discount_value}
+                                                    onChange={(val) =>
+                                                        form.setData('discount_value', val)
+                                                    }
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    disabled={form.data.discount_type === 'none'}
+                                                    value={form.data.discount_value}
+                                                    onChange={(e) =>
+                                                        form.setData(
+                                                            'discount_value',
+                                                            Number(e.target.value) || 0,
+                                                        )
+                                                    }
+                                                    className="h-9 rounded-lg border bg-background px-2.5 text-xs disabled:opacity-50"
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1668,18 +1714,18 @@ export default function PlanningDocumentsIndex({
                                                 </span>
                                             )}
                                         </div>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            value={form.data.agreed_contract_value}
-                                            onChange={(e) =>
-                                                form.setData('agreed_contract_value', e.target.value)
+                                        <CurrencyInput
+                                            value={form.data.agreed_contract_value || 0}
+                                            onChange={(val) =>
+                                                form.setData(
+                                                    'agreed_contract_value',
+                                                    val > 0 ? val : '',
+                                                )
                                             }
-                                            placeholder={`Kosongkan jika ikut hitungan otomatis (${formatRp(liveTotals.designCalculated)})`}
-                                            className="h-9 w-full rounded-lg border bg-background px-3 outline-none focus:border-primary"
                                         />
                                         <p className="text-[11px] text-muted-foreground">
-                                            Isi kolom ini jika ada perubahan harga hasil negosiasi/dealing dengan klien (di luar Biaya Survey).
+                                            Biarkan <strong>Rp 0</strong> jika ikut hitungan otomatis (
+                                            {formatRp(liveTotals.designCalculated)}). Isi nominal jika ada perubahan harga hasil negosiasi/dealing (di luar Biaya Survey).
                                         </p>
                                     </div>
                                 )}
@@ -1687,47 +1733,150 @@ export default function PlanningDocumentsIndex({
 
                             {/* Skema Termin */}
                             {form.data.document_kind !== 'survey_only' && (
-                                <div className="space-y-2 rounded-xl border bg-muted/20 p-3.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-foreground">
-                                            Skema Termin Pembayaran (%)
-                                        </span>
-                                        <span
-                                            className={cn(
-                                                'font-mono text-[11px] font-bold',
-                                                liveTotals.totalPercent === 100
-                                                    ? 'text-emerald-700'
-                                                    : 'text-rose-600',
-                                            )}
-                                        >
-                                            Total: {liveTotals.totalPercent}%
-                                        </span>
-                                    </div>
-                                    <div className="grid grid-cols-5 gap-2">
-                                        {[
-                                            { k: 'dp_percent' as const, label: 'DP %' },
-                                            { k: 't1_percent' as const, label: 'Termin 1 %' },
-                                            { k: 't2_percent' as const, label: 'Termin 2 %' },
-                                            { k: 't3_percent' as const, label: 'Termin 3 %' },
-                                            { k: 't4_percent' as const, label: 'Termin 4 %' },
-                                        ].map((f) => (
-                                            <div key={f.k}>
-                                                <label className="mb-0.5 block text-[10px] text-muted-foreground">
-                                                    {f.label}
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    max={100}
-                                                    value={form.data[f.k]}
-                                                    onChange={(e) =>
-                                                        form.setData(f.k, Number(e.target.value) || 0)
+                                <div className="space-y-2.5 rounded-xl border bg-muted/20 p-3.5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-semibold text-foreground">
+                                                Skema Termin Pembayaran
+                                            </span>
+                                            <div className="inline-flex rounded-lg border bg-background p-0.5 text-[11px]">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        form.setData('payment_scheme_mode', 'percent')
                                                     }
-                                                    className="h-8 w-full rounded-md border bg-background px-2 text-xs"
-                                                />
+                                                    className={cn(
+                                                        'rounded-md px-2.5 py-0.5 font-semibold transition',
+                                                        form.data.payment_scheme_mode === 'percent'
+                                                            ? 'bg-primary text-primary-foreground'
+                                                            : 'text-muted-foreground hover:text-foreground',
+                                                    )}
+                                                >
+                                                    Persentase (%)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const hasAnyAmount =
+                                                            (Number(form.data.dp_amount) || 0) +
+                                                                (Number(form.data.t1_amount) || 0) +
+                                                                (Number(form.data.t2_amount) || 0) +
+                                                                (Number(form.data.t3_amount) || 0) +
+                                                                (Number(form.data.t4_amount) || 0) >
+                                                            0;
+                                                        if (!hasAnyAmount && liveTotals.effectiveDesign > 0) {
+                                                            const base = liveTotals.effectiveDesign;
+                                                            form.setData((prev) => ({
+                                                                ...prev,
+                                                                payment_scheme_mode: 'fixed',
+                                                                dp_amount: Math.round(
+                                                                    (base * (Number(prev.dp_percent) || 0)) / 100,
+                                                                ),
+                                                                t1_amount: Math.round(
+                                                                    (base * (Number(prev.t1_percent) || 0)) / 100,
+                                                                ),
+                                                                t2_amount: Math.round(
+                                                                    (base * (Number(prev.t2_percent) || 0)) / 100,
+                                                                ),
+                                                                t3_amount: Math.round(
+                                                                    (base * (Number(prev.t3_percent) || 0)) / 100,
+                                                                ),
+                                                                t4_amount: Math.round(
+                                                                    (base * (Number(prev.t4_percent) || 0)) / 100,
+                                                                ),
+                                                            }));
+                                                        } else {
+                                                            form.setData('payment_scheme_mode', 'fixed');
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        'rounded-md px-2.5 py-0.5 font-semibold transition',
+                                                        form.data.payment_scheme_mode === 'fixed'
+                                                            ? 'bg-primary text-primary-foreground'
+                                                            : 'text-muted-foreground hover:text-foreground',
+                                                    )}
+                                                >
+                                                    Nominal Rupiah (Custom)
+                                                </button>
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        {form.data.payment_scheme_mode === 'percent' ? (
+                                            <span
+                                                className={cn(
+                                                    'font-mono text-[11px] font-bold',
+                                                    liveTotals.totalPercent === 100
+                                                        ? 'text-emerald-700'
+                                                        : 'text-rose-600',
+                                                )}
+                                            >
+                                                Total: {liveTotals.totalPercent}%
+                                            </span>
+                                        ) : (
+                                            <span
+                                                className={cn(
+                                                    'font-mono text-[11px] font-bold',
+                                                    liveTotals.fixedDiff === 0
+                                                        ? 'text-emerald-700'
+                                                        : 'text-amber-700',
+                                                )}
+                                            >
+                                                Total Termin: {formatRp(liveTotals.totalFixedTermin)}
+                                                {liveTotals.fixedDiff !== 0
+                                                    ? ` (Selisih ${formatRp(Math.abs(liveTotals.fixedDiff))})`
+                                                    : ' ✓ Pas'}
+                                            </span>
+                                        )}
                                     </div>
+
+                                    {form.data.payment_scheme_mode === 'percent' ? (
+                                        <div className="grid grid-cols-5 gap-2">
+                                            {[
+                                                { k: 'dp_percent' as const, label: 'DP %' },
+                                                { k: 't1_percent' as const, label: 'Termin 1 %' },
+                                                { k: 't2_percent' as const, label: 'Termin 2 %' },
+                                                { k: 't3_percent' as const, label: 'Termin 3 %' },
+                                                { k: 't4_percent' as const, label: 'Termin 4 %' },
+                                            ].map((f) => (
+                                                <div key={f.k}>
+                                                    <label className="mb-0.5 block text-[10px] text-muted-foreground">
+                                                        {f.label}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        max={100}
+                                                        value={form.data[f.k]}
+                                                        onChange={(e) =>
+                                                            form.setData(f.k, Number(e.target.value) || 0)
+                                                        }
+                                                        className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                            {[
+                                                { k: 'dp_amount' as const, label: 'DP (Rp)' },
+                                                { k: 't1_amount' as const, label: 'Termin 1 (Rp)' },
+                                                { k: 't2_amount' as const, label: 'Termin 2 (Rp)' },
+                                                { k: 't3_amount' as const, label: 'Termin 3 (Rp)' },
+                                                { k: 't4_amount' as const, label: 'Termin 4 (Rp)' },
+                                            ].map((f) => (
+                                                <div key={f.k}>
+                                                    <label className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+                                                        {f.label}
+                                                    </label>
+                                                    <CurrencyInput
+                                                        value={form.data[f.k]}
+                                                        onChange={(val) => form.setData(f.k, val)}
+                                                        className="h-8 rounded-md"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1776,39 +1925,44 @@ export default function PlanningDocumentsIndex({
                                                 1. Survey (Awal): {formatRp(liveTotals.surveyAmount)}
                                             </span>
                                         )}
-                                        {Number(form.data.dp_percent) > 0 && (
-                                            <span className="rounded bg-white/70 px-2 py-0.5">
-                                                DP ({form.data.dp_percent}%):{' '}
-                                                {formatRp(
-                                                    Math.round(
-                                                        (liveTotals.effectiveDesign * Number(form.data.dp_percent)) /
-                                                            100,
-                                                    ),
-                                                )}
-                                            </span>
-                                        )}
-                                        {Number(form.data.t1_percent) > 0 && (
-                                            <span className="rounded bg-white/70 px-2 py-0.5">
-                                                T1 ({form.data.t1_percent}%):{' '}
-                                                {formatRp(
-                                                    Math.round(
-                                                        (liveTotals.effectiveDesign * Number(form.data.t1_percent)) /
-                                                            100,
-                                                    ),
-                                                )}
-                                            </span>
-                                        )}
-                                        {Number(form.data.t2_percent) > 0 && (
-                                            <span className="rounded bg-white/70 px-2 py-0.5">
-                                                T2 ({form.data.t2_percent}%):{' '}
-                                                {formatRp(
-                                                    Math.round(
-                                                        (liveTotals.effectiveDesign * Number(form.data.t2_percent)) /
-                                                            100,
-                                                    ),
-                                                )}
-                                            </span>
-                                        )}
+                                        {form.data.payment_scheme_mode === 'fixed'
+                                            ? [
+                                                  { label: 'DP', amt: Number(form.data.dp_amount) || 0 },
+                                                  { label: 'T1', amt: Number(form.data.t1_amount) || 0 },
+                                                  { label: 'T2', amt: Number(form.data.t2_amount) || 0 },
+                                                  { label: 'T3', amt: Number(form.data.t3_amount) || 0 },
+                                                  { label: 'T4', amt: Number(form.data.t4_amount) || 0 },
+                                              ]
+                                                  .filter((x) => x.amt > 0)
+                                                  .map((x) => (
+                                                      <span
+                                                          key={x.label}
+                                                          className="rounded bg-white/70 px-2 py-0.5"
+                                                      >
+                                                          {x.label}: {formatRp(x.amt)}
+                                                      </span>
+                                                  ))
+                                            : [
+                                                  { label: 'DP', pct: Number(form.data.dp_percent) || 0 },
+                                                  { label: 'T1', pct: Number(form.data.t1_percent) || 0 },
+                                                  { label: 'T2', pct: Number(form.data.t2_percent) || 0 },
+                                                  { label: 'T3', pct: Number(form.data.t3_percent) || 0 },
+                                                  { label: 'T4', pct: Number(form.data.t4_percent) || 0 },
+                                              ]
+                                                  .filter((x) => x.pct > 0)
+                                                  .map((x) => (
+                                                      <span
+                                                          key={x.label}
+                                                          className="rounded bg-white/70 px-2 py-0.5"
+                                                      >
+                                                          {x.label} ({x.pct}%):{' '}
+                                                          {formatRp(
+                                                              Math.round(
+                                                                  (liveTotals.effectiveDesign * x.pct) / 100,
+                                                              ),
+                                                          )}
+                                                      </span>
+                                                  ))}
                                     </div>
                                 )}
                             </div>

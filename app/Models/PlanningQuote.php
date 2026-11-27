@@ -12,8 +12,9 @@ use Illuminate\Support\Carbon;
     'client_number', 'project_id', 'parent_quote_id', 'document_kind',
     'client_name', 'client_phone', 'project_title', 'quote_date', 'actual_area', 'floor_breakdown',
     'discount_type', 'discount_value', 'discount_amount',
-    'survey_fee', 'survey_mode', 'survey_paid_at',
+    'survey_fee', 'survey_mode', 'survey_paid_at', 'payment_scheme_mode',
     'dp_percent', 't1_percent', 't2_percent', 't3_percent', 't4_percent',
+    'dp_amount', 't1_amount', 't2_amount', 't3_amount', 't4_amount',
     'dp_paid_at', 't1_paid_at', 't2_paid_at', 't3_paid_at', 't4_paid_at',
     'subtotal_amount', 'contract_value', 'agreed_contract_value', 'status', 'stage_label',
     'intro_notes', 'notes', 'created_by',
@@ -39,6 +40,11 @@ class PlanningQuote extends Model
             't2_percent' => 'float',
             't3_percent' => 'float',
             't4_percent' => 'float',
+            'dp_amount' => 'integer',
+            't1_amount' => 'integer',
+            't2_amount' => 'integer',
+            't3_amount' => 'integer',
+            't4_amount' => 'integer',
             'dp_paid_at' => 'date',
             't1_paid_at' => 'date',
             't2_paid_at' => 'date',
@@ -169,29 +175,41 @@ class PlanningQuote extends Model
         }
 
         $designBase = $this->effectiveDesignValue();
+        $isFixed = ($this->payment_scheme_mode ?? 'percent') === 'fixed';
 
         $definitions = [
-            ['key' => 'dp', 'suffix' => 'DP', 'label' => 'Down Payment', 'percent' => (float) $this->dp_percent, 'paid_at' => $this->dp_paid_at],
-            ['key' => 't1', 'suffix' => 'T1', 'label' => 'Termin 1', 'percent' => (float) $this->t1_percent, 'paid_at' => $this->t1_paid_at],
-            ['key' => 't2', 'suffix' => 'T2', 'label' => 'Termin 2', 'percent' => (float) $this->t2_percent, 'paid_at' => $this->t2_paid_at],
-            ['key' => 't3', 'suffix' => 'T3', 'label' => 'Termin 3', 'percent' => (float) $this->t3_percent, 'paid_at' => $this->t3_paid_at],
-            ['key' => 't4', 'suffix' => 'T4', 'label' => 'Termin 4', 'percent' => (float) $this->t4_percent, 'paid_at' => $this->t4_paid_at],
+            ['key' => 'dp', 'suffix' => 'DP', 'label' => 'Down Payment', 'percent' => (float) $this->dp_percent, 'fixed' => (int) ($this->dp_amount ?? 0), 'paid_at' => $this->dp_paid_at],
+            ['key' => 't1', 'suffix' => 'T1', 'label' => 'Termin 1', 'percent' => (float) $this->t1_percent, 'fixed' => (int) ($this->t1_amount ?? 0), 'paid_at' => $this->t1_paid_at],
+            ['key' => 't2', 'suffix' => 'T2', 'label' => 'Termin 2', 'percent' => (float) $this->t2_percent, 'fixed' => (int) ($this->t2_amount ?? 0), 'paid_at' => $this->t2_paid_at],
+            ['key' => 't3', 'suffix' => 'T3', 'label' => 'Termin 3', 'percent' => (float) $this->t3_percent, 'fixed' => (int) ($this->t3_amount ?? 0), 'paid_at' => $this->t3_paid_at],
+            ['key' => 't4', 'suffix' => 'T4', 'label' => 'Termin 4', 'percent' => (float) $this->t4_percent, 'fixed' => (int) ($this->t4_amount ?? 0), 'paid_at' => $this->t4_paid_at],
         ];
 
         foreach ($definitions as $def) {
-            if ($def['percent'] <= 0) {
-                continue;
+            if ($isFixed) {
+                if ($def['fixed'] <= 0) {
+                    continue;
+                }
+                $amount = $def['fixed'];
+                $pct = $designBase > 0 ? round(($amount / $designBase) * 100, 1) : 0.0;
+                $label = $def['label'];
+            } else {
+                if ($def['percent'] <= 0) {
+                    continue;
+                }
+                $amount = (int) round(($designBase * $def['percent']) / 100);
+                $pct = $def['percent'];
+                $pctStr = fmod($def['percent'], 1.0) === 0.0
+                    ? (string) (int) $def['percent']
+                    : rtrim(rtrim(number_format($def['percent'], 2, '.', ''), '0'), '.');
+                $label = "{$def['label']} ({$pctStr}%)";
             }
-            $amount = (int) round(($designBase * $def['percent']) / 100);
-            $pctStr = fmod($def['percent'], 1.0) === 0.0
-                ? (string) (int) $def['percent']
-                : rtrim(rtrim(number_format($def['percent'], 2, '.', ''), '0'), '.');
 
             $stages[] = [
                 'key' => $def['key'],
                 'suffix' => $def['suffix'],
-                'label' => "{$def['label']} ({$pctStr}%)",
-                'percent' => $def['percent'],
+                'label' => $label,
+                'percent' => $pct,
                 'amount' => $amount,
                 'paid_at' => $def['paid_at']?->format('Y-m-d'),
                 'paid_at_formatted' => $def['paid_at']?->format('d-M-Y'),

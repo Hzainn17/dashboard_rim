@@ -207,4 +207,66 @@ class PlanningDocumentTest extends TestCase
         $project = Project::query()->findOrFail($quote->project_id);
         $this->assertSame(20000000, $project->estimated_budget);
     }
+
+    public function test_custom_fixed_rupiah_payment_scheme(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin)
+            ->post(route('planning-documents.store'), [
+                'document_kind' => 'main',
+                'client_name' => 'IBU RINA',
+                'project_title' => 'Rumah Tinggal + Add-On Interior',
+                'quote_date' => '2026-11-27',
+                'payment_scheme_mode' => 'fixed',
+                'dp_amount' => 5000000,
+                't1_amount' => 8000000,
+                't2_amount' => 7000000,
+                'agreed_contract_value' => 20000000,
+                'status' => 'progress',
+                'items' => [
+                    [
+                        'package_code' => 'PKG-2',
+                        'description' => 'Paket 2',
+                        'unit_type' => 'm2',
+                        'quantity' => 150,
+                        'unit_price' => 110000,
+                    ],
+                    [
+                        'package_code' => 'ADDON-INT',
+                        'description' => 'Add-On Interior Design',
+                        'unit_type' => 'm2',
+                        'quantity' => 150,
+                        'unit_price' => 20000,
+                    ],
+                ],
+            ])
+            ->assertRedirect();
+
+        $quote = PlanningQuote::query()->where('client_name', 'IBU RINA')->firstOrFail();
+        $this->assertSame('fixed', $quote->payment_scheme_mode);
+
+        $stages = $quote->paymentStages();
+        $this->assertCount(3, $stages);
+        $this->assertSame('Down Payment', $stages[0]['label']);
+        $this->assertSame(5000000, $stages[0]['amount']);
+        $this->assertSame('Termin 1', $stages[1]['label']);
+        $this->assertSame(8000000, $stages[1]['amount']);
+        $this->assertSame('Termin 2', $stages[2]['label']);
+        $this->assertSame(7000000, $stages[2]['amount']);
+
+        // Record DP paid -> paidTotal should be exactly 5,000,000
+        $this->actingAs($admin)
+            ->patch(route('planning-documents.payments', $quote), [
+                'dp_paid_at' => '2026-11-27',
+            ])
+            ->assertRedirect();
+
+        $quote->refresh();
+        $this->assertSame(5000000, $quote->paidTotal());
+
+        $invPdf = $this->actingAs($admin)->get(route('planning-documents.pdf.invoice', [$quote, 'dp']));
+        $invPdf->assertOk();
+        $this->assertStringStartsWith('%PDF-', $invPdf->getContent());
+    }
 }
