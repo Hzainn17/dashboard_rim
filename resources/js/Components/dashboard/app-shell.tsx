@@ -65,6 +65,10 @@ export function AppShell({
             router.visit(route('projects.index'));
             return;
         }
+        if (id === 'planning-documents') {
+            router.visit(route('planning-documents.index'));
+            return;
+        }
         if (id === 'field-projects') {
             router.visit(route('projects.field'));
             return;

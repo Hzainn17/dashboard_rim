@@ -9,6 +9,7 @@ use App\Http\Controllers\FieldProjectController;
 use App\Http\Controllers\MyProfileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\PlanningDocumentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectClientBriefController;
 use App\Http\Controllers\ProjectController;
@@ -50,6 +51,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/field-projects/{project}', [FieldProjectController::class, 'show'])->name('projects.field.show');
     Route::put('/field-projects/{project}', [FieldProjectController::class, 'update'])->name('projects.field.update');
     Route::delete('/field-projects/{project}', [FieldProjectController::class, 'destroy'])->name('projects.field.destroy');
+
+    // Planning Commercial Documents (Surat Penawaran, Invoice, Kwitansi — Admin Perencanaan)
+    Route::get('/planning-documents', [PlanningDocumentController::class, 'index'])->name('planning-documents.index');
+    Route::post('/planning-documents', [PlanningDocumentController::class, 'store'])->name('planning-documents.store');
+    Route::put('/planning-documents/{quote}', [PlanningDocumentController::class, 'update'])->name('planning-documents.update');
+    Route::patch('/planning-documents/{quote}/payments', [PlanningDocumentController::class, 'updatePayments'])->name('planning-documents.payments');
+    Route::post('/planning-documents/{quote}/convert-project', [PlanningDocumentController::class, 'convertToProject'])->name('planning-documents.convert-project');
+    Route::delete('/planning-documents/{quote}', [PlanningDocumentController::class, 'destroy'])->name('planning-documents.destroy');
+    Route::get('/planning-documents/{quote}/pdf/quotation', [PlanningDocumentController::class, 'pdfQuotation'])->name('planning-documents.pdf.quotation');
+    Route::get('/planning-documents/{quote}/pdf/invoice/{stage}', [PlanningDocumentController::class, 'pdfInvoice'])->name('planning-documents.pdf.invoice');
+    Route::get('/planning-documents/{quote}/pdf/receipt/{stage}', [PlanningDocumentController::class, 'pdfReceipt'])->name('planning-documents.pdf.receipt');
 
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');

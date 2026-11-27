@@ -43,11 +43,15 @@ export function SidebarContent({ role, active, onNavigate }: SidebarContentProps
     const isAdmin = isAdminRole(auth?.user?.role) || role === 'admin';
     const isFieldWorker = auth?.workType === 'lapangan';
     const isFreelancer = Boolean(auth?.isFreelancer);
+    const canManagePlanningDocs = Boolean(auth?.canManagePlanningDocuments);
     const nav = isSuperAdmin
         ? adminNav
         : isAdmin
         ? regularAdminNav
         : karyawanNav.filter((item) => {
+              if (item.id === 'planning-documents' && !canManagePlanningDocs) {
+                  return false;
+              }
               if (
                   isFreelancer &&
                   (item.id === 'presensi-harian' ||

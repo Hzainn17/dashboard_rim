@@ -189,6 +189,7 @@ export type PageProps<
         secondsUntilCheckInOpen?: number;
         workType?: 'kantor' | 'lapangan';
         isFreelancer?: boolean;
+        canManagePlanningDocuments?: boolean;
         targetWorkHours?: number;
         targetWorkMinutes?: number;
         unclosedPastAttendance?: {

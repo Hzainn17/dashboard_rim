@@ -56,6 +56,21 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine whether the user can manage Planning Commercial Documents (Penawaran, Invoice, Kwitansi):
+     * Super Admin, Admin, or Admin Project / Administrasi Perencanaan (e.g. Rindi).
+     */
+    public function canManagePlanningDocuments(): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        $position = strtolower((string) ($this->employee?->position ?? ''));
+
+        return str_contains($position, 'admin');
+    }
+
+    /**
      * Determine whether the user acts as a PM / Division Lead (Super Admin, Admin, or Lead Arsitek / PM position).
      */
     public function isDivisionLead(): bool

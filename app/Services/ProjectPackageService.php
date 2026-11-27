@@ -220,6 +220,62 @@ class ProjectPackageService
     }
 
     /**
+     * Commercial pricelist catalog synced with Planning Projects packages + Promo / Addendum items.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function commercialPricelist(): array
+    {
+        $basePackages = self::packages();
+        $codeMap = [
+            'Paket 1' => 'PKG-1',
+            'Paket 2' => 'PKG-2',
+            'Paket 3' => 'PKG-3',
+            'Interior Design Package' => 'INT-01',
+            'Custom / Khusus' => 'CUSTOM',
+        ];
+
+        $catalog = [];
+        foreach ($basePackages as $pkg) {
+            $bullets = collect($pkg['deliverables'] ?? [])
+                ->map(fn (string $d): string => "• {$d}")
+                ->implode("\n");
+
+            $catalog[] = [
+                'code' => $codeMap[$pkg['id']] ?? 'CUSTOM',
+                'project_package_id' => $pkg['id'],
+                'name' => $pkg['name'],
+                'default_description' => $bullets !== '' ? "{$pkg['name']}\n{$bullets}" : $pkg['name'],
+                'unit_type' => $pkg['id'] === 'Custom / Khusus' ? 'ls' : 'm2',
+                'price_per_m2' => (int) $pkg['price_per_m2'],
+                'min_area' => (int) $pkg['min_area'],
+            ];
+        }
+
+        // Additional commercial codes from RIM Projects Pricelist_Ref
+        $catalog[] = [
+            'code' => 'PRM-01',
+            'project_package_id' => 'Paket 2',
+            'name' => 'Paket 2 + RAB (Bonus Promo)',
+            'default_description' => "Package 2 + RAB (Bonus Promo)\n• Denah Layout 2D\n• Visual 3D (Render)\n• Lembar Kerja (DED)\n• Rancangan Anggaran Biaya (RAB)",
+            'unit_type' => 'm2',
+            'price_per_m2' => 110000,
+            'min_area' => 80,
+        ];
+        $catalog[] = [
+            'code' => 'ADN-01',
+            'project_package_id' => 'Custom / Khusus',
+            'name' => 'Adendum Desain / Pekerjaan Tambahan',
+            'default_description' => "Pengerjaan Adendum Desain (Perubahan / Tambahan Kerja)\n• Revisi Denah Layout 2D\n• Visual 3D (Render)\n• Penyesuaian Lembar Kerja (DED) & RAB",
+            'unit_type' => 'ls',
+            'price_per_m2' => 140000,
+            'min_area' => 0,
+        ];
+
+        return $catalog;
+    }
+
+    /**
      * Add N workdays (skipping Saturday & Sunday).
      */
     public static function addWorkdays(Carbon $start, int $workdays): Carbon

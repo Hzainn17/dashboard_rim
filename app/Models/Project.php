@@ -288,4 +288,12 @@ class Project extends Model
     {
         return $this->hasMany(Overtime::class);
     }
+
+    /**
+     * @return HasMany<PlanningQuote, $this>
+     */
+    public function planningQuotes(): HasMany
+    {
+        return $this->hasMany(PlanningQuote::class)->orderByDesc('client_number');
+    }
 }
