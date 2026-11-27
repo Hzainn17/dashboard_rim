@@ -220,7 +220,7 @@ class ProjectPackageService
     }
 
     /**
-     * Commercial pricelist catalog synced with Planning Projects packages + Promo / Addendum items.
+     * Commercial pricelist catalog synced with Planning Projects packages + Add-Ons + Promo / Addendum items.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -243,7 +243,9 @@ class ProjectPackageService
 
             $catalog[] = [
                 'code' => $codeMap[$pkg['id']] ?? 'CUSTOM',
+                'category' => 'package',
                 'project_package_id' => $pkg['id'],
+                'addon_id' => null,
                 'name' => $pkg['name'],
                 'default_description' => $bullets !== '' ? "{$pkg['name']}\n{$bullets}" : $pkg['name'],
                 'unit_type' => $pkg['id'] === 'Custom / Khusus' ? 'ls' : 'm2',
@@ -252,23 +254,65 @@ class ProjectPackageService
             ];
         }
 
-        // Additional commercial codes from RIM Projects Pricelist_Ref
+        // Official Add-Ons synced directly from ProjectPackageService::addons()
+        $addonCodeMap = [
+            'Add-On Interior Design' => [
+                'code' => 'ADDON-INT',
+                'unit_type' => 'm2',
+                'description' => "Add-On Interior Design\n• Penambahan lingkup desain interior (Denah, Visual 3D & DED Interior)",
+            ],
+            'Pengawasan Lapangan' => [
+                'code' => 'ADDON-SUP',
+                'unit_type' => 'ls',
+                'description' => "Add-On Pengawasan / Supervisi Lapangan Berkala\n• Kunjungan & pengecekan kesesuaian pekerjaan di lapangan",
+            ],
+            'Free Hard Box & Merchandise' => [
+                'code' => 'ADDON-BOX',
+                'unit_type' => 'ls',
+                'description' => "Add-On Hard Box & Merchandise\n• Hard Box Eksklusif, Draft Printed Out & Flashdisk",
+            ],
+        ];
+
+        foreach (self::addons() as $addon) {
+            $meta = $addonCodeMap[$addon['id']] ?? null;
+            if (! $meta) {
+                continue;
+            }
+
+            $catalog[] = [
+                'code' => $meta['code'],
+                'category' => 'addon',
+                'project_package_id' => 'Custom / Khusus',
+                'addon_id' => $addon['id'],
+                'name' => $addon['label'],
+                'default_description' => $meta['description'],
+                'unit_type' => $meta['unit_type'],
+                'price_per_m2' => (int) ($addon['price_per_m2'] ?? 0),
+                'min_area' => 0,
+            ];
+        }
+
+        // Additional commercial templates (Promo & Addendum — freely editable per quote)
         $catalog[] = [
             'code' => 'PRM-01',
+            'category' => 'commercial',
             'project_package_id' => 'Paket 2',
+            'addon_id' => null,
             'name' => 'Paket 2 + RAB (Bonus Promo)',
-            'default_description' => "Package 2 + RAB (Bonus Promo)\n• Denah Layout 2D\n• Visual 3D (Render)\n• Lembar Kerja (DED)\n• Rancangan Anggaran Biaya (RAB)",
+            'default_description' => "Paket 2 + RAB (Bonus Promo)\n• Denah Layout\n• Design 3D Visual\n• Lembar Kerja (DED)\n• RAB (Bonus Promo)",
             'unit_type' => 'm2',
             'price_per_m2' => 110000,
             'min_area' => 80,
         ];
         $catalog[] = [
             'code' => 'ADN-01',
+            'category' => 'commercial',
             'project_package_id' => 'Custom / Khusus',
+            'addon_id' => null,
             'name' => 'Adendum Desain / Pekerjaan Tambahan',
-            'default_description' => "Pengerjaan Adendum Desain (Perubahan / Tambahan Kerja)\n• Revisi Denah Layout 2D\n• Visual 3D (Render)\n• Penyesuaian Lembar Kerja (DED) & RAB",
+            'default_description' => "Pengerjaan Adendum Desain (Perubahan / Tambahan Kerja)\n• Revisi Denah Layout\n• Visual 3D (Render)\n• Penyesuaian Lembar Kerja (DED) & RAB",
             'unit_type' => 'ls',
-            'price_per_m2' => 140000,
+            'price_per_m2' => 0,
             'min_area' => 0,
         ];
 

@@ -145,7 +145,7 @@ class PlanningDocumentController extends Controller
         $planningProjects = Project::query()
             ->where('project_type', 'perencanaan')
             ->orderByDesc('updated_at')
-            ->get(['id', 'name', 'client_name', 'client_phone', 'location', 'package_name', 'building_area', 'estimated_budget', 'status']);
+            ->get(['id', 'name', 'client_name', 'client_phone', 'location', 'package_name', 'package_addons', 'building_area', 'estimated_budget', 'status']);
 
         return Inertia::render('PlanningDocuments/Index', [
             'quotes' => $formattedQuotes,
@@ -353,8 +353,14 @@ class PlanningDocumentController extends Controller
         $packageName = $matchedPkg['project_package_id'] ?? 'Paket 2';
         $buildingType = ($primaryItem?->package_code === 'INT-01') ? 'interior' : 'rumah_hunian';
         $area = $quote->actual_area ?: ($primaryItem && $primaryItem->unit_type === 'm2' ? $primaryItem->quantity : null);
+        $detectedAddons = $quote->items
+            ->map(fn ($it) => $pricelist->firstWhere('code', $it->package_code)['addon_id'] ?? null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
 
-        $project = DB::transaction(function () use ($quote, $packageName, $buildingType, $area, $user): Project {
+        $project = DB::transaction(function () use ($quote, $packageName, $buildingType, $area, $detectedAddons, $user): Project {
             $project = Project::query()->create([
                 'name' => "{$quote->project_title} - {$quote->client_name}",
                 'client_name' => $quote->client_name,
@@ -362,6 +368,7 @@ class PlanningDocumentController extends Controller
                 'location' => $quote->project_title,
                 'category' => $packageName,
                 'package_name' => $packageName,
+                'package_addons' => ! empty($detectedAddons) ? $detectedAddons : null,
                 'project_type' => 'perencanaan',
                 'building_type' => $buildingType,
                 'building_area' => $area,

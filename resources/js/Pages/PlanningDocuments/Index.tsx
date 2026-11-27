@@ -23,7 +23,9 @@ import { PageProps } from '@/types';
 
 interface PricelistItem {
     code: string;
+    category?: 'package' | 'addon' | 'commercial';
     project_package_id: string;
+    addon_id?: string | null;
     name: string;
     default_description: string;
     unit_type: 'm2' | 'ls';
@@ -38,6 +40,7 @@ interface ProjectOption {
     client_phone?: string | null;
     location?: string | null;
     package_name?: string | null;
+    package_addons?: string[] | null;
     building_area?: number | null;
     estimated_budget?: number | null;
     status: string;
@@ -373,23 +376,40 @@ export default function PlanningDocumentsIndex({
         const found = projects.find((p) => String(p.id) === projId);
         if (!found) return;
 
-        const matchedPkg = pricelist.find((pl) => pl.project_package_id === found.package_name);
-        const nextItems =
-            form.data.document_kind === 'main' && matchedPkg
-                ? [
-                      {
-                          package_code: matchedPkg.code,
-                          description: matchedPkg.default_description,
-                          unit_type: matchedPkg.unit_type,
-                          quantity: Math.max(
-                              Number(found.building_area || 0),
-                              matchedPkg.min_area || 0,
-                          ) || 80,
-                          unit_price: matchedPkg.price_per_m2,
-                          notes: 'Sinkron Proyek Perencanaan',
-                      },
-                  ]
-                : form.data.items;
+        const matchedPkg = pricelist.find(
+            (pl) => pl.category !== 'addon' && pl.project_package_id === found.package_name,
+        );
+        const syncedArea = Number(found.building_area || 0);
+        let nextItems = form.data.items;
+
+        if (form.data.document_kind === 'main' && matchedPkg) {
+            nextItems = [
+                {
+                    package_code: matchedPkg.code,
+                    description: matchedPkg.default_description,
+                    unit_type: matchedPkg.unit_type,
+                    quantity: Math.max(syncedArea, matchedPkg.min_area || 0) || 80,
+                    unit_price: matchedPkg.price_per_m2,
+                    notes: 'Sinkron Proyek Perencanaan',
+                },
+            ];
+
+            if (Array.isArray(found.package_addons) && found.package_addons.length > 0) {
+                found.package_addons.forEach((addonName) => {
+                    const matchedAddon = pricelist.find((pl) => pl.addon_id === addonName);
+                    if (matchedAddon) {
+                        nextItems.push({
+                            package_code: matchedAddon.code,
+                            description: matchedAddon.default_description,
+                            unit_type: matchedAddon.unit_type,
+                            quantity: matchedAddon.unit_type === 'ls' ? 1 : syncedArea || 80,
+                            unit_price: matchedAddon.price_per_m2,
+                            notes: 'Add-On Sinkron Proyek',
+                        });
+                    }
+                });
+            }
+        }
 
         form.setData((prev) => ({
             ...prev,
@@ -1348,20 +1368,51 @@ export default function PlanningDocumentsIndex({
                             {/* Line Items (hidden for survey_only) */}
                             {form.data.document_kind !== 'survey_only' && (
                                 <div className="space-y-2.5 rounded-xl border bg-muted/20 p-3.5">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <h3 className="font-bold text-foreground">
-                                            Rincian Paket / Item Pekerjaan
+                                            Rincian Paket / Add-On / Item Pekerjaan
                                         </h3>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                form.setData('items', [...form.data.items, defaultItem()])
-                                            }
-                                            className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
-                                        >
-                                            <Plus className="size-3" />
-                                            Tambah Baris Item
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const addonInt = pricelist.find(
+                                                        (p) => p.code === 'ADDON-INT',
+                                                    );
+                                                    const areaNow = Number(form.data.actual_area) || 80;
+                                                    form.setData('items', [
+                                                        ...form.data.items,
+                                                        {
+                                                            package_code: addonInt?.code ?? 'ADDON-INT',
+                                                            description:
+                                                                addonInt?.default_description ??
+                                                                'Add-On Interior Design\n• Penambahan lingkup desain interior',
+                                                            unit_type: addonInt?.unit_type ?? 'm2',
+                                                            quantity: areaNow,
+                                                            unit_price: addonInt?.price_per_m2 ?? 20000,
+                                                            notes: 'Add-On Interior',
+                                                        },
+                                                    ]);
+                                                }}
+                                                className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800 hover:bg-teal-100"
+                                            >
+                                                <Plus className="size-3" />
+                                                Add-On Interior (+20rb/m²)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    form.setData('items', [
+                                                        ...form.data.items,
+                                                        defaultItem(),
+                                                    ])
+                                                }
+                                                className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
+                                            >
+                                                <Plus className="size-3" />
+                                                Tambah Baris Item
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {form.data.items.map((item, idx) => (
@@ -1381,11 +1432,37 @@ export default function PlanningDocumentsIndex({
                                                         }
                                                         className="h-8 w-full rounded-md border bg-background px-2 text-xs"
                                                     >
-                                                        {pricelist.map((pl) => (
-                                                            <option key={pl.code} value={pl.code}>
-                                                                {pl.code} — {pl.name}
-                                                            </option>
-                                                        ))}
+                                                        <optgroup label="Paket Perencanaan (Sinkron Proyek)">
+                                                            {pricelist
+                                                                .filter((pl) => pl.category === 'package')
+                                                                .map((pl) => (
+                                                                    <option key={pl.code} value={pl.code}>
+                                                                        {pl.code} — {pl.name}
+                                                                    </option>
+                                                                ))}
+                                                        </optgroup>
+                                                        <optgroup label="Add-On Perencanaan (Sinkron Proyek)">
+                                                            {pricelist
+                                                                .filter((pl) => pl.category === 'addon')
+                                                                .map((pl) => (
+                                                                    <option key={pl.code} value={pl.code}>
+                                                                        {pl.code} — {pl.name}
+                                                                    </option>
+                                                                ))}
+                                                        </optgroup>
+                                                        <optgroup label="Promo & Adendum (Bebas Edit)">
+                                                            {pricelist
+                                                                .filter(
+                                                                    (pl) =>
+                                                                        pl.category !== 'package' &&
+                                                                        pl.category !== 'addon',
+                                                                )
+                                                                .map((pl) => (
+                                                                    <option key={pl.code} value={pl.code}>
+                                                                        {pl.code} — {pl.name}
+                                                                    </option>
+                                                                ))}
+                                                        </optgroup>
                                                     </select>
                                                 </div>
                                                 <div className="sm:col-span-2">
